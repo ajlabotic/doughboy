@@ -556,6 +556,8 @@
       </div>
     </section>
 
+    <p id="foodCostHint" style="display:none;font-size:0.85rem;color:var(--rumba);margin-bottom:24px;font-weight:500;"></p>
+
     <!-- DAILY INSIGHT -->
     <section class="insight-panel fade-section">
       <h2>Today's Insight</h2>
@@ -731,10 +733,10 @@
     });
 
     window.restaurantData = null;
+    window.savedIngredientCosts = {};
 
     // ===== SHARED DISPLAY FUNCTIONS =====
     function updateMetricCards(metrics) {
-      // Revenue
       var rev = typeof metrics.revenue === 'number' ? metrics.revenue : parseFloat(metrics.revenue);
       document.getElementById('metricRevenue').textContent = !isNaN(rev) && rev > 0
         ? '$' + rev.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -743,17 +745,14 @@
         ? 'Week of ' + metrics.dateRange
         : 'Upload your POS data to see real numbers';
 
-      // Food cost %
       var fc = metrics.foodCostPercent;
       document.getElementById('metricFoodCost').textContent = fc && String(fc).length <= 20 ? fc : 'Data needed';
-      document.getElementById('metricFoodCostSub').textContent = 'Based on sale prices';
+      document.getElementById('metricFoodCostSub').textContent = 'Based on ingredient costs';
 
-      // Labor cost %
       var lc = typeof metrics.laborCostPercent === 'number' ? metrics.laborCostPercent : parseFloat(metrics.laborCostPercent);
       document.getElementById('metricLaborCost').textContent = !isNaN(lc) ? lc + '%' : 'Add shift data';
       document.getElementById('metricLaborCostSub').textContent = 'Based on shift data';
 
-      // Net margin
       var nm = typeof metrics.netMargin === 'number' ? metrics.netMargin : parseFloat(metrics.netMargin);
       document.getElementById('metricNetMargin').textContent = !isNaN(nm) ? nm + '%' : 'Upload more data';
       document.getElementById('metricNetMarginSub').textContent = 'After labor costs';
@@ -765,21 +764,79 @@
       }
     }
 
+    function calculateFoodCostFromSavedCosts(itemQuantities, totalRevenue) {
+      if (!window.savedIngredientCosts || Object.keys(window.savedIngredientCosts).length === 0) return null;
+      if (!itemQuantities || totalRevenue <= 0) return null;
+
+      var totalFoodCost = 0;
+      var itemsWithCosts = 0;
+
+      Object.keys(itemQuantities).forEach(function(itemName) {
+        var cost = window.savedIngredientCosts[itemName];
+        if (cost) {
+          totalFoodCost += cost * itemQuantities[itemName];
+          itemsWithCosts++;
+        }
+      });
+
+      if (itemsWithCosts === 0) return null;
+      return ((totalFoodCost / totalRevenue) * 100).toFixed(1);
+    }
+
+    function showFoodCostHint(hasData) {
+      var hint = document.getElementById('foodCostHint');
+      if (hasData) {
+        hint.style.display = 'none';
+      } else {
+        hint.innerHTML = 'Add ingredient costs to see your food cost % and true net margin. <a href="#" id="foodCostHintLink" style="color:var(--rumba);font-weight:600;text-decoration:underline;text-underline-offset:2px;">Add costs now</a>';
+        hint.style.display = 'block';
+        document.getElementById('foodCostHintLink').addEventListener('click', function(e) {
+          e.preventDefault();
+          showIngredientCostForm();
+        });
+      }
+    }
+
+    // ===== LOAD SAVED INGREDIENT COSTS ON STARTUP =====
+    supabase.auth.getSession().then(async function(r) {
+      if (!r.data.session) return;
+      var costsResult = await supabase
+        .from('ingredient_costs')
+        .select('item_name, cost_per_portion')
+        .eq('user_id', r.data.session.user.id);
+      if (costsResult.data && costsResult.data.length > 0) {
+        costsResult.data.forEach(function(c) {
+          window.savedIngredientCosts[c.item_name] = c.cost_per_portion;
+        });
+      }
+    });
+
     // ===== LOAD CACHED METRICS ON PAGE LOAD =====
     window.addEventListener('load', function() {
       var saved = localStorage.getItem('doughboy_metrics');
-      console.log('Loading from localStorage:', saved);
       if (saved) {
         try {
           var metrics = JSON.parse(saved);
-          updateMetricCards(metrics);
-          if (metrics.dailyInsight) {
-            updateInsightPanel(metrics.dailyInsight);
+          // Try to apply saved ingredient costs
+          if (metrics.itemQuantities && Object.keys(window.savedIngredientCosts).length > 0) {
+            var fc = calculateFoodCostFromSavedCosts(metrics.itemQuantities, parseFloat(metrics.revenue));
+            if (fc) {
+              metrics.foodCostPercent = fc + '%';
+              var laborNum = parseFloat(metrics.laborCostPercent) || 0;
+              metrics.netMargin = (100 - parseFloat(fc) - laborNum).toFixed(1) + '%';
+            }
           }
+          updateMetricCards(metrics);
+          if (metrics.dailyInsight) updateInsightPanel(metrics.dailyInsight);
           document.getElementById('clearDataLink').style.display = 'inline-block';
           document.getElementById('chatWelcome').textContent = 'Your data is loaded! I can see your sales, menu items, and revenue. Ask me anything about your numbers.';
+          // Show hint if no food cost
+          if (!metrics.foodCostPercent || metrics.foodCostPercent === 'Data needed') {
+            showFoodCostHint(false);
+          } else {
+            showFoodCostHint(true);
+          }
         } catch(e) {
-          console.error('Failed to load saved metrics:', e);
           localStorage.removeItem('doughboy_metrics');
         }
       }
@@ -824,39 +881,43 @@
           throw new Error(data.error || 'Analysis failed');
         }
 
-        // Store for chat context
         window.restaurantData = data;
 
         var metrics = data.metrics || {};
         metrics.dateRange = data.dateRange || '';
+        var itemQuantities = (data.rawData && data.rawData.itemQuantities) || {};
+        var totalRevenue = parseFloat(data.metrics.revenue) || 0;
+        var laborPercent = parseFloat(data.metrics.laborCostPercent) || 0;
 
-        // Update UI
+        // Try to apply saved ingredient costs automatically
+        var foodCost = calculateFoodCostFromSavedCosts(itemQuantities, totalRevenue);
+        if (foodCost !== null) {
+          metrics.foodCostPercent = foodCost + '%';
+          metrics.netMargin = (100 - parseFloat(foodCost) - laborPercent).toFixed(1) + '%';
+          showFoodCostHint(true);
+        } else {
+          showFoodCostHint(false);
+        }
+
         updateMetricCards(metrics);
         updateInsightPanel(data.dailyInsight);
 
-        // Cache to localStorage
+        // Cache to localStorage including itemQuantities
         var metricsToSave = {
           revenue: data.metrics.revenue,
-          foodCostPercent: data.metrics.foodCostPercent,
+          foodCostPercent: metrics.foodCostPercent,
           laborCostPercent: data.metrics.laborCostPercent,
-          netMargin: data.metrics.netMargin,
+          netMargin: metrics.netMargin,
           dateRange: data.dateRange || '',
           dailyInsight: data.dailyInsight,
+          itemQuantities: itemQuantities,
           uploadDate: new Date().toISOString()
         };
         localStorage.setItem('doughboy_metrics', JSON.stringify(metricsToSave));
-        console.log('Saved to localStorage:', metricsToSave);
 
-        // Update chat welcome
         document.getElementById('chatWelcome').textContent = 'Your data is loaded! I can see your sales, menu items, and revenue. Ask me anything about your numbers.';
-
-        // Show clear data link
         document.getElementById('clearDataLink').style.display = 'inline-block';
 
-        // Show ingredient cost form with saved values from Supabase
-        showIngredientCostForm();
-
-        // Reset upload UI
         btn.textContent = 'Uploaded';
         btn.style.opacity = '0.6';
 
@@ -875,7 +936,6 @@
     var chatUsage = document.getElementById('chatUsage');
     var currentUserId = null;
 
-    // Store userId after auth loads
     supabase.auth.getSession().then(function(r) {
       if (r.data.session) currentUserId = r.data.session.user.id;
     });
@@ -902,7 +962,6 @@
       if (!text || !currentUserId) return;
       if (chatInput.disabled) return;
 
-      // User message
       var userMsg = document.createElement('div');
       userMsg.className = 'chat-msg user';
       userMsg.textContent = text;
@@ -959,7 +1018,7 @@
       if (!sessionResult.data || !sessionResult.data.session) return;
       var session = sessionResult.data.session;
 
-      // If form is already open, close it
+      // Toggle: close if already open
       var existing = document.getElementById('ingredient-cost-form');
       if (existing) {
         existing.remove();
@@ -967,17 +1026,16 @@
         return;
       }
 
-      // Show loading state
       editBtn.textContent = 'Loading...';
       editBtn.disabled = true;
 
-      // Fetch saved ingredient costs from Supabase
+      // Fetch saved costs
       var costsResult = await supabase
         .from('ingredient_costs')
         .select('item_name, cost_per_portion')
         .eq('user_id', session.user.id);
 
-      // Fetch unique items from latest CSV data
+      // Fetch CSV items
       var csvResult = await supabase
         .from('csv_data')
         .select('raw_data')
@@ -989,31 +1047,34 @@
       editBtn.textContent = 'Edit ingredient costs';
       editBtn.disabled = false;
 
-      // Build saved costs map
       var savedCosts = costsResult.data || [];
       var savedMap = {};
-      savedCosts.forEach(function(c) {
-        savedMap[c.item_name] = c.cost_per_portion;
-      });
+      savedCosts.forEach(function(c) { savedMap[c.item_name] = c.cost_per_portion; });
 
-      // Get unique items from CSV or saved costs
       var uniqueItems = [];
+      var hasCSV = false;
       if (csvResult.data && csvResult.data.raw_data && csvResult.data.raw_data.itemQuantities) {
         uniqueItems = Object.keys(csvResult.data.raw_data.itemQuantities);
-      } else if (savedCosts.length > 0) {
-        uniqueItems = savedCosts.map(function(c) { return c.item_name; });
+        hasCSV = true;
+      } else if (csvResult.data && csvResult.data.raw_data && csvResult.data.raw_data.uniqueItems) {
+        uniqueItems = csvResult.data.raw_data.uniqueItems;
+        hasCSV = true;
       }
+      // Include items from saved costs not in CSV
+      savedCosts.forEach(function(c) {
+        if (uniqueItems.indexOf(c.item_name) === -1) uniqueItems.push(c.item_name);
+      });
 
-      if (uniqueItems.length === 0) {
-        alert('Upload a CSV first so Doughboy knows your menu items.');
-        return;
-      }
-
-      // Build form with pre-filled values and saved/not-set badges
+      // Build form
       var formHTML = '<div id="ingredient-cost-form" style="background:var(--vanilla-light);border-radius:16px;padding:2rem;margin-top:1rem;border:1px solid rgba(54,48,49,0.1);">' +
-        '<h3 style="font-family:Fraunces,serif;font-size:1.3rem;font-weight:700;color:var(--espresso);margin-bottom:0.5rem;">Ingredient Costs</h3>' +
-        '<p style="font-size:0.85rem;color:#4A4344;margin-bottom:0.25rem;">Your saved costs are pre-filled below. Update any item and hit Save.</p>' +
-        '<p style="font-size:0.75rem;color:var(--rumba);margin-bottom:1.5rem;font-style:italic;">Only items you change will be updated. Everything else stays as saved.</p>';
+        '<h3 style="font-family:Fraunces,serif;font-size:1.3rem;font-weight:700;color:var(--espresso);margin-bottom:0.5rem;">Ingredient Costs</h3>';
+
+      if (!hasCSV && uniqueItems.length === 0) {
+        formHTML += '<p style="font-size:0.85rem;color:#4A4344;margin-bottom:1rem;">Add your menu items and ingredient costs below. Upload a CSV first to see your full menu automatically, or add items manually.</p>';
+      } else {
+        formHTML += '<p style="font-size:0.85rem;color:#4A4344;margin-bottom:0.25rem;">Your saved costs are pre-filled below. Update any item and hit Save.</p>' +
+          '<p style="font-size:0.75rem;color:var(--rumba);margin-bottom:1.5rem;font-style:italic;">Only items you change will be updated. Everything else stays as saved.</p>';
+      }
 
       uniqueItems.forEach(function(item) {
         var savedValue = savedMap[item] !== undefined ? parseFloat(savedMap[item]).toFixed(2) : '';
@@ -1028,35 +1089,66 @@
           badge + '</div>' +
           '<div style="display:flex;align-items:center;gap:0.5rem;">' +
           '<span style="font-size:0.85rem;color:#4A4344;">$</span>' +
-          '<input type="number" step="0.01" min="0" value="' + savedValue + '" placeholder="0.00" data-item="' + item.replace(/"/g, '&quot;') + '" data-original="' + savedValue + '" class="ingredient-cost-input" style="width:80px;border:1px solid rgba(54,48,49,0.15);border-radius:8px;padding:0.4rem 0.6rem;font-family:DM Sans,sans-serif;font-size:0.85rem;color:var(--espresso);background:white;text-align:right;">' +
+          '<input type="number" step="0.01" min="0" value="' + savedValue + '" placeholder="0.00" data-item="' + item.replace(/"/g, '&quot;') + '" class="ingredient-cost-input" style="width:80px;border:1px solid rgba(54,48,49,0.15);border-radius:8px;padding:0.4rem 0.6rem;font-family:DM Sans,sans-serif;font-size:0.85rem;color:var(--espresso);background:white;text-align:right;">' +
           '<span style="font-size:0.8rem;color:#4A4344;">/ portion</span>' +
           '</div></div>';
       });
+
+      // Manual add item row
+      formHTML += '<div id="manual-add-row" style="padding:0.75rem 0;border-bottom:1px solid rgba(54,48,49,0.06);">' +
+        '<div style="display:flex;align-items:center;gap:0.5rem;">' +
+        '<input type="text" id="manual-item-name" placeholder="Item name" style="flex:1;border:1px solid rgba(54,48,49,0.15);border-radius:8px;padding:0.4rem 0.6rem;font-family:DM Sans,sans-serif;font-size:0.85rem;color:var(--espresso);background:white;">' +
+        '<span style="font-size:0.85rem;color:#4A4344;">$</span>' +
+        '<input type="number" step="0.01" min="0" id="manual-item-cost" placeholder="0.00" style="width:80px;border:1px solid rgba(54,48,49,0.15);border-radius:8px;padding:0.4rem 0.6rem;font-family:DM Sans,sans-serif;font-size:0.85rem;color:var(--espresso);background:white;text-align:right;">' +
+        '</div>' +
+        '<a href="#" id="add-manual-item" style="font-size:0.8rem;color:var(--rumba);font-weight:600;text-decoration:none;display:inline-block;margin-top:0.5rem;">+ Add item</a>' +
+        '</div>';
 
       formHTML += '<div style="display:flex;gap:1rem;margin-top:1.5rem;align-items:center;">' +
         '<button id="save-ingredient-costs" style="background:var(--rumba);color:var(--vanilla);border:none;border-radius:100px;padding:0.8rem 2rem;font-family:DM Sans,sans-serif;font-size:0.9rem;font-weight:600;cursor:pointer;flex:1;">Save Changes</button>' +
         '<button id="cancel-ingredient-costs" style="background:transparent;color:#4A4344;border:1.5px solid rgba(54,48,49,0.2);border-radius:100px;padding:0.8rem 1.5rem;font-family:DM Sans,sans-serif;font-size:0.9rem;cursor:pointer;">Cancel</button>' +
         '</div></div>';
 
-      // Insert after edit button
       editBtn.insertAdjacentHTML('afterend', formHTML);
       editBtn.textContent = 'Close ingredient costs';
 
       // Attach save handler
-      document.getElementById('save-ingredient-costs')
-        .addEventListener('click', saveIngredientCosts);
+      document.getElementById('save-ingredient-costs').addEventListener('click', saveIngredientCosts);
 
       // Attach cancel handler
-      document.getElementById('cancel-ingredient-costs')
-        .addEventListener('click', function() {
-          document.getElementById('ingredient-cost-form').remove();
-          editBtn.textContent = 'Edit ingredient costs';
-        });
+      document.getElementById('cancel-ingredient-costs').addEventListener('click', function() {
+        document.getElementById('ingredient-cost-form').remove();
+        editBtn.textContent = 'Edit ingredient costs';
+      });
+
+      // Attach manual add item handler
+      document.getElementById('add-manual-item').addEventListener('click', function(e) {
+        e.preventDefault();
+        var nameInput = document.getElementById('manual-item-name');
+        var costInput = document.getElementById('manual-item-cost');
+        var name = nameInput.value.trim();
+        var cost = costInput.value;
+        if (!name) return;
+
+        var newRow = '<div style="display:flex;align-items:center;justify-content:space-between;padding:0.75rem 0;border-bottom:1px solid rgba(54,48,49,0.06);">' +
+          '<div style="display:flex;align-items:center;gap:0.5rem;">' +
+          '<span style="font-family:DM Sans,sans-serif;font-weight:600;font-size:0.9rem;color:var(--espresso);">' + name + '</span>' +
+          '<span style="font-size:0.65rem;background:rgba(124,36,57,0.1);color:var(--rumba);padding:0.2rem 0.5rem;border-radius:100px;font-weight:600;">new</span>' +
+          '</div>' +
+          '<div style="display:flex;align-items:center;gap:0.5rem;">' +
+          '<span style="font-size:0.85rem;color:#4A4344;">$</span>' +
+          '<input type="number" step="0.01" min="0" value="' + (cost || '') + '" placeholder="0.00" data-item="' + name.replace(/"/g, '&quot;') + '" class="ingredient-cost-input" style="width:80px;border:1px solid rgba(54,48,49,0.15);border-radius:8px;padding:0.4rem 0.6rem;font-family:DM Sans,sans-serif;font-size:0.85rem;color:var(--espresso);background:white;text-align:right;">' +
+          '<span style="font-size:0.8rem;color:#4A4344;">/ portion</span>' +
+          '</div></div>';
+
+        document.getElementById('manual-add-row').insertAdjacentHTML('beforebegin', newRow);
+        nameInput.value = '';
+        costInput.value = '';
+      });
     }
 
     // ===== EDIT COSTS BUTTON =====
-    document.getElementById('edit-costs-btn')
-      .addEventListener('click', showIngredientCostForm);
+    document.getElementById('edit-costs-btn').addEventListener('click', showIngredientCostForm);
 
     // ===== SAVE INGREDIENT COSTS =====
     async function saveIngredientCosts() {
@@ -1099,14 +1191,30 @@
         var result = await response.json();
 
         if (result.success) {
-          // Update metric cards
-          var saved = JSON.parse(localStorage.getItem('doughboy_metrics') || '{}');
-          saved.foodCostPercent = result.foodCostPercent;
-          saved.netMargin = result.netMargin;
-          localStorage.setItem('doughboy_metrics', JSON.stringify(saved));
-          updateMetricCards(saved);
+          // Update global saved costs
+          costs.forEach(function(c) {
+            window.savedIngredientCosts[c.item_name] = c.cost_per_portion;
+          });
 
-          // Show success feedback
+          // Recalculate using localStorage data
+          var savedMetrics = JSON.parse(localStorage.getItem('doughboy_metrics') || '{}');
+          var itemQuantities = savedMetrics.itemQuantities || {};
+          var totalRevenue = parseFloat(String(savedMetrics.revenue).replace(/[^0-9.]/g, '')) || 0;
+          var laborNum = parseFloat(savedMetrics.laborCostPercent) || 0;
+
+          var foodCost = calculateFoodCostFromSavedCosts(itemQuantities, totalRevenue);
+          if (foodCost !== null) {
+            savedMetrics.foodCostPercent = foodCost + '%';
+            savedMetrics.netMargin = (100 - parseFloat(foodCost) - laborNum).toFixed(1) + '%';
+          } else {
+            savedMetrics.foodCostPercent = result.foodCostPercent;
+            savedMetrics.netMargin = result.netMargin;
+          }
+
+          localStorage.setItem('doughboy_metrics', JSON.stringify(savedMetrics));
+          updateMetricCards(savedMetrics);
+          showFoodCostHint(true);
+
           btn.textContent = 'Saved!';
           btn.style.background = '#2a7a4a';
 

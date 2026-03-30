@@ -282,6 +282,8 @@ module.exports = async function handler(req, res) {
       })
 
     // Return to frontend
+    var laborCostNum = totalRevenue > 0 ? parseFloat(((totalLaborCost / totalRevenue) * 100).toFixed(1)) : 0
+
     return res.status(200).json({
       success: true,
       metrics: {
@@ -292,6 +294,13 @@ module.exports = async function handler(req, res) {
       },
       dateRange: dateRange,
       uniqueItems: uniqueItems,
+      rawData: {
+        itemQuantities: itemQuantities,
+        totalRevenue: parseFloat(totalRevenue.toFixed(2)),
+        totalLaborCost: parseFloat(totalLaborCost.toFixed(2)),
+        laborCostPercent: laborCostNum,
+        dateRange: dateRange
+      },
       dailyInsight: parsed.dailyInsight || '',
       topObservations: parsed.topObservations || [],
       immediateAction: parsed.immediateAction || ''
