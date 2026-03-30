@@ -110,26 +110,32 @@ module.exports = async function handler(req, res) {
     console.log('First row price:', parsedRows[0].sale_price)
     console.log('First row revenue:', parseFloat(parsedRows[0].quantity) * parseFloat(parsedRows[0].sale_price))
 
-    // STEP 3 — Calculate revenue, labor, items, dates
-    var totalRevenue = 0
-    var totalLaborCost = 0
+    // STEP 3 — Calculate revenue (deduplicated by date + item)
+    var revenueMap = {}
+    var laborMap = {}
     var uniqueItemsSet = {}
     var dates = []
 
     parsedRows.forEach(function(row, index) {
-      var qty = parseFloat(row.quantity || row.qty || row.count || row.units || 1) || 1
-      var price = parseFloat(row.sale_price || row.price || row.amount || row.total || row.gross_sales || 0) || 0
-      var hours = parseFloat(row.hours_worked || row.hours || 0) || 0
-      var rate = parseFloat(row.hourly_rate || row.rate || row.wage || 0) || 0
-
-      var rowRevenue = qty * price
-      var rowLabor = hours * rate
-
-      totalRevenue += rowRevenue
-      totalLaborCost += rowLabor
+      var qty = parseFloat(row.quantity || row.qty || 1) || 1
+      var price = parseFloat(row.sale_price || row.price || 0) || 0
+      var hours = parseFloat(row.hours_worked || 0) || 0
+      var rate = parseFloat(row.hourly_rate || 0) || 0
 
       if (index < 3) {
-        console.log('Row ' + index + ': qty=' + qty + ' price=' + price + ' revenue=' + rowRevenue + ' hours=' + hours + ' rate=' + rate + ' labor=' + rowLabor)
+        console.log('Row ' + index + ': qty=' + qty + ' price=' + price + ' revenue=' + (qty * price) + ' hours=' + hours + ' rate=' + rate + ' labor=' + (hours * rate))
+      }
+
+      // Revenue: deduplicate by date + item_name
+      var revenueKey = (row.date || '') + '_' + (row.item_name || row.item || '')
+      if (!revenueMap[revenueKey]) {
+        revenueMap[revenueKey] = qty * price
+      }
+
+      // Labor: deduplicate by date + staff + shift
+      var laborKey = (row.date || '') + '_' + (row.staff || '') + '_' + (row.shift || '')
+      if (!laborMap[laborKey]) {
+        laborMap[laborKey] = hours * rate
       }
 
       // Items
@@ -144,6 +150,11 @@ module.exports = async function handler(req, res) {
       }
     })
 
+    var totalRevenue = Object.values(revenueMap).reduce(function(sum, val) { return sum + val }, 0)
+    var totalLaborCost = Object.values(laborMap).reduce(function(sum, val) { return sum + val }, 0)
+
+    console.log('Revenue entries (deduplicated):', Object.keys(revenueMap).length)
+    console.log('Labor entries (deduplicated):', Object.keys(laborMap).length)
     console.log('Total revenue:', totalRevenue)
     console.log('Total labor cost:', totalLaborCost)
 
