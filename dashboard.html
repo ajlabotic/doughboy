@@ -580,6 +580,7 @@
       <p class="upload-sub">Export a sales report from your POS system and upload it here. Square, Toast, and Clover all support CSV export.</p>
       <p class="upload-error" id="uploadError" style="display:none;font-size:0.875rem;color:var(--rumba);margin-top:10px;font-weight:500;"></p>
       <a href="#" id="clearDataLink" style="display:none;font-size:0.8rem;color:#4A4344;margin-top:10px;text-decoration:underline;text-underline-offset:2px;">Clear data and upload new CSV</a>
+      <button id="edit-costs-btn" onclick="showIngredientCostForm()" style="background:transparent;border:1.5px solid var(--rumba);color:var(--rumba);border-radius:100px;padding:0.5rem 1.2rem;font-family:DM Sans,sans-serif;font-size:0.8rem;font-weight:600;cursor:pointer;margin-top:0.75rem;display:block;">Edit ingredient costs</button>
     </section>
 
     <!-- CHAT AGENT -->
@@ -974,6 +975,76 @@
     chatInput.addEventListener('keydown', function(e) {
       if (e.key === 'Enter') sendMessage();
     });
+
+    // ===== SHOW INGREDIENT COST FORM (global for onclick) =====
+    window.showIngredientCostForm = async function() {
+      // Remove existing form if present
+      var existingForm = document.getElementById('ingredient-cost-form');
+      if (existingForm) { existingForm.remove(); return; }
+
+      var sessionResult = await supabase.auth.getSession();
+      if (!sessionResult.data.session) return;
+      var userId = sessionResult.data.session.user.id;
+
+      // Fetch saved costs from Supabase
+      var costsResult = await supabase
+        .from('ingredient_costs')
+        .select('item_name, cost_per_portion')
+        .eq('user_id', userId);
+      var savedCosts = costsResult.data || [];
+
+      var savedMap = {};
+      savedCosts.forEach(function(c) { savedMap[c.item_name] = c.cost_per_portion; });
+
+      // Fetch unique items from latest csv_data
+      var csvResult = await supabase
+        .from('csv_data')
+        .select('raw_data')
+        .eq('user_id', userId)
+        .order('upload_date', { ascending: false })
+        .limit(1)
+        .single();
+
+      var uniqueItems = [];
+      if (csvResult.data && csvResult.data.raw_data && csvResult.data.raw_data.itemQuantities) {
+        uniqueItems = Object.keys(csvResult.data.raw_data.itemQuantities);
+      } else if (csvResult.data && csvResult.data.raw_data && csvResult.data.raw_data.uniqueItems) {
+        uniqueItems = csvResult.data.raw_data.uniqueItems;
+      }
+
+      // Also include any items from saved costs not in CSV
+      savedCosts.forEach(function(c) {
+        if (uniqueItems.indexOf(c.item_name) === -1) uniqueItems.push(c.item_name);
+      });
+
+      if (uniqueItems.length === 0) {
+        alert('Upload a CSV first so Doughboy knows your menu items.');
+        return;
+      }
+
+      // Build form
+      var formHTML = '<div id="ingredient-cost-form" style="background:var(--vanilla-light);border-radius:16px;padding:2rem;margin-top:1.5rem;border:1px solid rgba(54,48,49,0.1);transition:opacity 0.5s ease;">' +
+        '<h3 style="font-family:Fraunces,serif;font-size:1.3rem;font-weight:700;color:var(--espresso);margin-bottom:0.5rem;">What does each dish cost to make?</h3>' +
+        '<p style="font-size:0.85rem;color:#4A4344;margin-bottom:1.5rem;">Enter your ingredient cost per portion. You only need to do this once.</p>';
+
+      uniqueItems.forEach(function(item) {
+        var prefill = savedMap[item] !== undefined ? savedMap[item] : '';
+        formHTML += '<div style="display:flex;align-items:center;justify-content:space-between;padding:0.75rem 0;border-bottom:1px solid rgba(54,48,49,0.06);">' +
+          '<span style="font-family:DM Sans,sans-serif;font-weight:600;font-size:0.9rem;color:var(--espresso);">' + item + '</span>' +
+          '<div style="display:flex;align-items:center;gap:0.5rem;">' +
+          '<span style="font-size:0.85rem;color:#4A4344;">$</span>' +
+          '<input type="number" step="0.01" min="0" placeholder="0.00" data-item="' + item.replace(/"/g, '&quot;') + '" class="ingredient-cost-input" value="' + prefill + '" style="width:80px;border:1px solid rgba(54,48,49,0.15);border-radius:8px;padding:0.4rem 0.6rem;font-family:DM Sans,sans-serif;font-size:0.85rem;color:var(--espresso);background:white;text-align:right;">' +
+          '<span style="font-size:0.8rem;color:#4A4344;">per portion</span>' +
+          '</div></div>';
+      });
+
+      formHTML += '<button id="save-ingredient-costs" onclick="saveIngredientCosts()" style="margin-top:1.5rem;background:var(--rumba);color:var(--vanilla);border:none;border-radius:100px;padding:0.8rem 2rem;font-family:DM Sans,sans-serif;font-size:0.9rem;font-weight:600;cursor:pointer;width:100%;">Save and Calculate Food Cost</button></div>';
+
+      var uploadSection = document.querySelector('.upload-section');
+      if (uploadSection) {
+        uploadSection.insertAdjacentHTML('afterend', formHTML);
+      }
+    };
 
     // ===== SAVE INGREDIENT COSTS (global for onclick) =====
     window.saveIngredientCosts = async function() {

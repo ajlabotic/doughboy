@@ -37,7 +37,7 @@ module.exports = async function handler(req, res) {
         }, { onConflict: 'user_id,item_name' })
     }
 
-    // Fetch latest csv_data to calculate food cost %
+    // Fetch latest csv_data for item quantities and revenue
     var csvResult = await supabase
       .from('csv_data')
       .select('raw_data')
@@ -46,60 +46,45 @@ module.exports = async function handler(req, res) {
       .limit(1)
       .single()
 
-    var totalRevenue = 0
-    var totalFoodCost = 0
-    var laborCostPercent = 0
-
     if (csvResult.data && csvResult.data.raw_data) {
       var rawData = csvResult.data.raw_data
-      totalRevenue = parseFloat(rawData.totalRevenue) || 0
+      var itemQuantities = rawData.itemQuantities || {}
+      var totalRevenue = parseFloat(rawData.totalRevenue) || 1
 
       // Parse labor cost % from stored value
+      var laborPercent = 0
       if (rawData.laborCostPercent && typeof rawData.laborCostPercent === 'string') {
-        laborCostPercent = parseFloat(rawData.laborCostPercent) || 0
+        laborPercent = parseFloat(rawData.laborCostPercent) || 0
       }
 
-      // Build a cost lookup from the submitted costs
-      var costLookup = {}
+      // Calculate total food cost: cost_per_portion * quantity sold
+      var totalFoodCost = 0
       costs.forEach(function(c) {
-        costLookup[c.item_name] = c.cost_per_portion
+        var qtySold = itemQuantities[c.item_name] || 0
+        totalFoodCost += c.cost_per_portion * qtySold
       })
 
-      // We don't have per-item quantity in raw_data summary,
-      // so estimate food cost using average cost vs average price
-      // totalFoodCost = sum of (cost_per_portion) for all items with costs
-      // as a proportion of total items
-      if (totalRevenue > 0) {
-        var itemsWithCosts = costs.length
-        var totalItems = (rawData.uniqueItems && rawData.uniqueItems.length) || itemsWithCosts
-        var avgCost = costs.reduce(function(sum, c) { return sum + c.cost_per_portion }, 0) / itemsWithCosts
-        var avgPrice = totalRevenue / (rawData.totalRows || 1)
+      console.log('Item quantities:', itemQuantities)
+      console.log('Total food cost:', totalFoodCost)
+      console.log('Total revenue:', totalRevenue)
 
-        // Food cost % = average ingredient cost / average sale price * 100
-        // weighted by coverage of items with costs entered
-        var coverage = itemsWithCosts / totalItems
-        var foodCostPercent = ((avgCost / avgPrice) * 100 * coverage).toFixed(1)
+      var foodCostPercent = ((totalFoodCost / totalRevenue) * 100).toFixed(1)
 
-        // Cap at reasonable range
-        if (parseFloat(foodCostPercent) > 100) foodCostPercent = 'Estimated'
-        if (parseFloat(foodCostPercent) < 0) foodCostPercent = 'Estimated'
+      console.log('Food cost %:', foodCostPercent)
 
-        var netMargin = (100 - laborCostPercent - parseFloat(foodCostPercent || 0)).toFixed(1)
+      var netMargin = (100 - parseFloat(foodCostPercent) - laborPercent).toFixed(1)
 
-        return res.status(200).json({
-          success: true,
-          foodCostPercent: foodCostPercent + '%',
-          netMargin: netMargin + '%'
-        })
-      }
+      return res.status(200).json({
+        success: true,
+        foodCostPercent: foodCostPercent + '%',
+        netMargin: netMargin + '%'
+      })
     }
 
-    // Fallback: rough estimate from average costs
-    var avgCost = costs.reduce(function(sum, c) { return sum + c.cost_per_portion }, 0) / costs.length
-
+    // Fallback if no CSV data
     return res.status(200).json({
       success: true,
-      foodCostPercent: '~$' + avgCost.toFixed(2) + ' avg',
+      foodCostPercent: 'Upload CSV first',
       netMargin: 'Upload more data'
     })
 

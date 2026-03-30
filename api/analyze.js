@@ -160,6 +160,26 @@ module.exports = async function handler(req, res) {
 
     var uniqueItems = Object.keys(uniqueItemsSet)
 
+    // Build item quantities map (deduplicated same as revenue)
+    var itemQuantities = {}
+    parsedRows.forEach(function(row) {
+      var name = row.item_name || row.item || row.product || row.menu_item || null
+      var qty = parseFloat(row.quantity || row.qty || 1) || 1
+      var dateItemKey = (row.date || '') + '_' + (name || '')
+      // Only count each date+item combo once (matches revenue dedup)
+      if (name && !itemQuantities['__seen_' + dateItemKey]) {
+        if (!itemQuantities[name]) itemQuantities[name] = 0
+        itemQuantities[name] += qty
+        itemQuantities['__seen_' + dateItemKey] = true
+      }
+    })
+    // Remove tracking keys
+    Object.keys(itemQuantities).forEach(function(k) {
+      if (k.indexOf('__seen_') === 0) delete itemQuantities[k]
+    })
+
+    console.log('Item quantities:', itemQuantities)
+
     // Calculate labor cost % and net margin
     var laborCostPercent = totalRevenue > 0
       ? ((totalLaborCost / totalRevenue) * 100).toFixed(1) + '%'
@@ -258,6 +278,7 @@ module.exports = async function handler(req, res) {
           laborCostPercent: laborCostPercent,
           netMargin: netMargin,
           uniqueItems: uniqueItems,
+          itemQuantities: itemQuantities,
           dateRange: dateRange
         },
         parsed_summary: parsed
