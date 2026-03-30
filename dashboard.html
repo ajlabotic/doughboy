@@ -593,7 +593,7 @@
             <svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
           </button>
         </div>
-        <div class="chat-usage">10 of 10 questions remaining this month</div>
+        <div class="chat-usage" id="chatUsage">10 of 10 questions remaining this month</div>
       </div>
     </section>
 
@@ -643,14 +643,22 @@
       // Try to get profile from profiles table
       var profile = await supabase
         .from('profiles')
-        .select('first_name, restaurant_name')
+        .select('first_name, restaurant_name, chat_questions_used, chat_questions_limit')
         .eq('id', user.id)
         .single();
+
+      var questionsUsed = 0;
+      var questionsLimit = 10;
 
       if (profile.data) {
         firstName = profile.data.first_name || firstName;
         restaurantName = profile.data.restaurant_name || restaurantName;
+        questionsUsed = profile.data.chat_questions_used || 0;
+        questionsLimit = profile.data.chat_questions_limit || 10;
       }
+
+      // Update usage counter
+      updateUsageDisplay(questionsUsed, questionsLimit);
 
       // Populate UI
       var greeting = getGreeting();
@@ -722,33 +730,83 @@
       alert('CSV upload processing coming soon. Your file is ready to go!');
     });
 
-    // ===== CHAT PLACEHOLDER =====
+    // ===== CHAT AGENT =====
     var chatInput = document.getElementById('chatInput');
     var chatMessages = document.getElementById('chatMessages');
     var chatSendBtn = document.getElementById('chatSendBtn');
+    var chatUsage = document.getElementById('chatUsage');
+    var currentUserId = null;
 
-    function sendMessage() {
+    // Store userId after auth loads
+    supabase.auth.getSession().then(function(r) {
+      if (r.data.session) currentUserId = r.data.session.user.id;
+    });
+
+    function updateUsageDisplay(used, limit) {
+      if (used >= limit) {
+        chatUsage.textContent = "You've used all your questions this month. Upgrade for more.";
+        chatUsage.style.color = 'var(--rumba)';
+        chatUsage.style.fontWeight = '600';
+        chatInput.disabled = true;
+        chatInput.placeholder = 'Question limit reached';
+        chatSendBtn.disabled = true;
+        chatSendBtn.style.opacity = '0.4';
+        chatSendBtn.style.cursor = 'not-allowed';
+      } else {
+        chatUsage.textContent = used + ' of ' + limit + ' questions used this month';
+        chatUsage.style.color = '';
+        chatUsage.style.fontWeight = '';
+      }
+    }
+
+    async function sendMessage() {
       var text = chatInput.value.trim();
-      if (!text) return;
+      if (!text || !currentUserId) return;
+      if (chatInput.disabled) return;
 
       // User message
       var userMsg = document.createElement('div');
       userMsg.className = 'chat-msg user';
       userMsg.textContent = text;
       chatMessages.appendChild(userMsg);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
 
       chatInput.value = '';
+      chatInput.disabled = true;
+      chatSendBtn.disabled = true;
 
-      // Bot response (placeholder)
-      setTimeout(function() {
+      try {
+        var res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: currentUserId, message: text })
+        });
+
+        var data = await res.json();
+
         var botMsg = document.createElement('div');
         botMsg.className = 'chat-msg bot';
-        botMsg.textContent = 'Upload your POS data first so I have something to work with!';
+        botMsg.textContent = data.reply || 'Something went wrong. Try again.';
         chatMessages.appendChild(botMsg);
         chatMessages.scrollTop = chatMessages.scrollHeight;
-      }, 600);
 
-      chatMessages.scrollTop = chatMessages.scrollHeight;
+        if (typeof data.used === 'number' && typeof data.limit === 'number') {
+          updateUsageDisplay(data.used, data.limit);
+        }
+
+        if (data.limitReached) return;
+      } catch (err) {
+        var errMsg = document.createElement('div');
+        errMsg.className = 'chat-msg bot';
+        errMsg.textContent = 'Connection issue. Please try again in a moment.';
+        chatMessages.appendChild(errMsg);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+
+      if (!chatInput.disabled) return;
+      chatInput.disabled = false;
+      chatSendBtn.disabled = false;
+      chatInput.focus();
     }
 
     chatSendBtn.addEventListener('click', sendMessage);
