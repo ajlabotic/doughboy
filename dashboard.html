@@ -731,30 +731,29 @@
     window.restaurantData = null;
 
     // ===== SHARED DISPLAY FUNCTIONS =====
-    function updateMetricCards(metrics, dateRange) {
+    function updateMetricCards(metrics) {
       // Revenue
-      document.getElementById('metricRevenue').textContent = typeof metrics.revenue === 'number' && metrics.revenue > 0
-        ? '$' + metrics.revenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      var rev = typeof metrics.revenue === 'number' ? metrics.revenue : parseFloat(metrics.revenue);
+      document.getElementById('metricRevenue').textContent = !isNaN(rev) && rev > 0
+        ? '$' + rev.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
         : '$0';
-      document.getElementById('metricRevenueSub').textContent = dateRange && dateRange !== 'Unknown'
-        ? 'Week of ' + dateRange
+      document.getElementById('metricRevenueSub').textContent = metrics.dateRange && metrics.dateRange !== 'Unknown'
+        ? 'Week of ' + metrics.dateRange
         : 'Upload your POS data to see real numbers';
 
       // Food cost %
       var fc = metrics.foodCostPercent;
-      document.getElementById('metricFoodCost').textContent = (fc && typeof fc === 'string' && fc.length <= 20) ? fc : (fc ? fc : 'Data needed');
+      document.getElementById('metricFoodCost').textContent = fc && String(fc).length <= 20 ? fc : 'Data needed';
       document.getElementById('metricFoodCostSub').textContent = 'Based on sale prices';
 
       // Labor cost %
-      document.getElementById('metricLaborCost').textContent = typeof metrics.laborCostPercent === 'number'
-        ? metrics.laborCostPercent + '%'
-        : 'Add shift data';
+      var lc = typeof metrics.laborCostPercent === 'number' ? metrics.laborCostPercent : parseFloat(metrics.laborCostPercent);
+      document.getElementById('metricLaborCost').textContent = !isNaN(lc) ? lc + '%' : 'Add shift data';
       document.getElementById('metricLaborCostSub').textContent = 'Based on shift data';
 
       // Net margin
-      document.getElementById('metricNetMargin').textContent = typeof metrics.netMargin === 'number'
-        ? metrics.netMargin + '%'
-        : 'Upload more data';
+      var nm = typeof metrics.netMargin === 'number' ? metrics.netMargin : parseFloat(metrics.netMargin);
+      document.getElementById('metricNetMargin').textContent = !isNaN(nm) ? nm + '%' : 'Upload more data';
       document.getElementById('metricNetMarginSub').textContent = 'After labor costs';
     }
 
@@ -765,16 +764,24 @@
     }
 
     // ===== LOAD CACHED METRICS ON PAGE LOAD =====
-    var savedMetrics = localStorage.getItem('doughboy_metrics');
-    if (savedMetrics) {
-      try {
-        var cached = JSON.parse(savedMetrics);
-        updateMetricCards(cached, cached.dateRange || '');
-        updateInsightPanel(cached.dailyInsight);
-        document.getElementById('clearDataLink').style.display = 'inline-block';
-        document.getElementById('chatWelcome').textContent = 'Your data is loaded! I can see your sales, menu items, and revenue. Ask me anything about your numbers.';
-      } catch (e) {}
-    }
+    window.addEventListener('load', function() {
+      var saved = localStorage.getItem('doughboy_metrics');
+      console.log('Loading from localStorage:', saved);
+      if (saved) {
+        try {
+          var metrics = JSON.parse(saved);
+          updateMetricCards(metrics);
+          if (metrics.dailyInsight) {
+            updateInsightPanel(metrics.dailyInsight);
+          }
+          document.getElementById('clearDataLink').style.display = 'inline-block';
+          document.getElementById('chatWelcome').textContent = 'Your data is loaded! I can see your sales, menu items, and revenue. Ask me anything about your numbers.';
+        } catch(e) {
+          console.error('Failed to load saved metrics:', e);
+          localStorage.removeItem('doughboy_metrics');
+        }
+      }
+    });
 
     // ===== CLEAR DATA LINK =====
     document.getElementById('clearDataLink').addEventListener('click', function(e) {
@@ -819,22 +826,24 @@
         window.restaurantData = data;
 
         var metrics = data.metrics || {};
-        var dateRange = data.dateRange || '';
+        metrics.dateRange = data.dateRange || '';
 
         // Update UI
-        updateMetricCards(metrics, dateRange);
+        updateMetricCards(metrics);
         updateInsightPanel(data.dailyInsight);
 
         // Cache to localStorage
-        localStorage.setItem('doughboy_metrics', JSON.stringify({
-          revenue: metrics.revenue,
-          foodCostPercent: metrics.foodCostPercent,
-          laborCostPercent: metrics.laborCostPercent,
-          netMargin: metrics.netMargin,
-          dateRange: dateRange,
+        var metricsToSave = {
+          revenue: data.metrics.revenue,
+          foodCostPercent: data.metrics.foodCostPercent,
+          laborCostPercent: data.metrics.laborCostPercent,
+          netMargin: data.metrics.netMargin,
+          dateRange: data.dateRange || '',
           dailyInsight: data.dailyInsight,
           uploadDate: new Date().toISOString()
-        }));
+        };
+        localStorage.setItem('doughboy_metrics', JSON.stringify(metricsToSave));
+        console.log('Saved to localStorage:', metricsToSave);
 
         // Update chat welcome
         document.getElementById('chatWelcome').textContent = 'Your data is loaded! I can see your sales, menu items, and revenue. Ask me anything about your numbers.';

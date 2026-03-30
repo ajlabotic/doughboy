@@ -29,7 +29,7 @@ function parseCSV(text) {
     return fields
   }
 
-  var headers = splitRow(lines[0]).map(function(h) { return h.toLowerCase().replace(/['"]/g, '').trim() })
+  var headers = splitRow(lines[0]).map(function(h) { return h.toLowerCase().replace(/['"]/g, '').replace(/_/g, ' ').trim() })
   var rows = []
   for (var i = 1; i < lines.length; i++) {
     var values = splitRow(lines[i])
@@ -89,94 +89,74 @@ module.exports = async function handler(req, res) {
       return res.status(400).json({ error: 'Could not parse any data from the CSV. Check the file format.' })
     }
 
-    // STEP 2 — Build analysis context
-    var itemVariations = ['item', 'item name', 'product', 'menu item', 'description', 'item description', 'name']
-    var dateVariations = ['date', 'order date', 'sale date', 'transaction date', 'day']
+    // STEP 2 — Sanitize column names
+    parsedRows = parsedRows.map(function(row) {
+      var cleanRow = {}
+      Object.keys(row).forEach(function(key) {
+        var cleanKey = key.trim().toLowerCase()
+          .replace(/[^a-z0-9_]/g, '_')
+          .replace(/\s+/g, '_')
+        cleanRow[cleanKey] = typeof row[key] === 'string'
+          ? row[key].trim()
+          : row[key]
+      })
+      return cleanRow
+    })
 
+    // Debug: log sanitized sample
+    console.log('Sample row:', parsedRows[0])
+    console.log('Column names:', Object.keys(parsedRows[0]))
+    console.log('First row qty:', parsedRows[0].quantity)
+    console.log('First row price:', parsedRows[0].sale_price)
+    console.log('First row revenue:', parseFloat(parsedRows[0].quantity) * parseFloat(parsedRows[0].sale_price))
+
+    // STEP 3 — Calculate revenue, labor, items, dates
     var totalRevenue = 0
     var totalLaborCost = 0
-    var hasLaborData = false
     var uniqueItemsSet = {}
     var dates = []
 
-    // Log column names for debugging
-    var columnNames = parsedRows.length > 0 ? Object.keys(parsedRows[0]) : []
-    console.log('CSV column names found:', columnNames)
-    console.log('First 3 rows:', JSON.stringify(parsedRows.slice(0, 3), null, 2))
+    parsedRows.forEach(function(row, index) {
+      var qty = parseFloat(row.quantity || row.qty || row.count || row.units || 1) || 1
+      var price = parseFloat(row.sale_price || row.price || row.amount || row.total || row.gross_sales || 0) || 0
+      var hours = parseFloat(row.hours_worked || row.hours || 0) || 0
+      var rate = parseFloat(row.hourly_rate || row.rate || row.wage || 0) || 0
 
-    for (var i = 0; i < parsedRows.length; i++) {
-      var row = parsedRows[i]
-      var rowRevenue = 0
-
-      // Approach A — multiply quantity * sale price
-      var qty = parseNum(row['quantity'] || row['qty'] || row['count'] || row['units'] || row['items sold'] || row['qty sold'])
-      var price = parseNum(row['sale price'] || row['price'] || row['unit price'] || row['menu price'] || row['item price'] || row['selling price'])
-
-      if (isNaN(qty)) qty = 1
-      if (!isNaN(price) && price > 0) {
-        rowRevenue = qty * price
-      }
-
-      // Approach B — if Approach A gives 0, look for pre-calculated total columns
-      if (rowRevenue === 0) {
-        var totalVal = parseNum(row['total'] || row['amount'] || row['gross sales'] || row['revenue'] || row['net sales'] || row['sales'] || row['total sales'] || row['gross amount'] || row['net amount'])
-        if (!isNaN(totalVal) && totalVal > 0) {
-          rowRevenue = totalVal
-        }
-      }
-
-      // Approach C — if still 0, find any numeric column that looks like dollars
-      if (rowRevenue === 0) {
-        for (var key in row) {
-          var val = row[key]
-          if (typeof val === 'string' && val.match(/^\$?\d+[\d,]*\.?\d*$/)) {
-            var candidate = parseNum(val)
-            if (!isNaN(candidate) && candidate > 0 && candidate < 100000) {
-              rowRevenue = candidate
-              break
-            }
-          }
-        }
-      }
+      var rowRevenue = qty * price
+      var rowLabor = hours * rate
 
       totalRevenue += rowRevenue
+      totalLaborCost += rowLabor
 
-      if (i < 3) {
-        console.log('Row ' + i + ' revenue:', rowRevenue, '| qty:', qty, '| price:', price)
+      if (index < 3) {
+        console.log('Row ' + index + ': qty=' + qty + ' price=' + price + ' revenue=' + rowRevenue + ' hours=' + hours + ' rate=' + rate + ' labor=' + rowLabor)
       }
 
-      // Labor = hours worked * hourly rate per row
-      var hoursVal = parseNum(row['hours worked'] || row['hours'] || row['labor hours'] || row['shift hours'] || row['total hours'])
-      var rateVal = parseNum(row['hourly rate'] || row['rate'] || row['pay rate'] || row['wage'] || row['hourly pay'] || row['hourly wage'])
-      if (!isNaN(hoursVal) && !isNaN(rateVal) && hoursVal > 0 && rateVal > 0) {
-        totalLaborCost += hoursVal * rateVal
-        hasLaborData = true
-      }
-
-      var itemVal = findColumn(row, itemVariations)
+      // Items
+      var itemVal = row.item_name || row.item || row.product || row.menu_item || row.description || row.name || null
       if (itemVal) uniqueItemsSet[itemVal] = true
 
-      var dateVal = findColumn(row, dateVariations)
+      // Dates
+      var dateVal = row.date || row.order_date || row.sale_date || row.transaction_date || row.day || null
       if (dateVal) {
         var d = new Date(dateVal)
         if (!isNaN(d.getTime())) dates.push(d)
       }
-    }
+    })
 
-    var uniqueItems = Object.keys(uniqueItemsSet)
-    totalRevenue = Math.round(totalRevenue * 100) / 100
-    totalLaborCost = Math.round(totalLaborCost * 100) / 100
-
-    console.log('Total revenue calculated:', totalRevenue)
+    console.log('Total revenue:', totalRevenue)
     console.log('Total labor cost:', totalLaborCost)
 
+    var uniqueItems = Object.keys(uniqueItemsSet)
+
     // Calculate labor cost % and net margin
-    var laborCostPercent = null
-    var netMargin = null
-    if (hasLaborData && totalRevenue > 0) {
-      laborCostPercent = Math.round((totalLaborCost / totalRevenue) * 100)
-      netMargin = Math.round(((totalRevenue - totalLaborCost) / totalRevenue) * 100)
-    }
+    var laborCostPercent = totalRevenue > 0
+      ? ((totalLaborCost / totalRevenue) * 100).toFixed(1) + '%'
+      : 'Add shift data'
+
+    var netMargin = totalRevenue > 0 && totalLaborCost > 0
+      ? (((totalRevenue - totalLaborCost) / totalRevenue) * 100).toFixed(1) + '%'
+      : 'Upload more data'
 
     var dateRange = 'Unknown'
     if (dates.length > 0) {
@@ -262,8 +242,8 @@ module.exports = async function handler(req, res) {
         user_id: userId,
         raw_data: {
           totalRows: parsedRows.length,
-          totalRevenue: totalRevenue,
-          totalLaborCost: totalLaborCost,
+          totalRevenue: parseFloat(totalRevenue.toFixed(2)),
+          totalLaborCost: parseFloat(totalLaborCost.toFixed(2)),
           laborCostPercent: laborCostPercent,
           netMargin: netMargin,
           uniqueItems: uniqueItems,
@@ -272,18 +252,12 @@ module.exports = async function handler(req, res) {
         parsed_summary: parsed
       })
 
-    // STEP 6 — Clean up food cost value (cap to short string)
-    var foodCostClean = parsed.foodCostPercent || null
-    if (typeof foodCostClean === 'string' && foodCostClean.length > 20) {
-      foodCostClean = null
-    }
-
     // Return to frontend
     return res.status(200).json({
       success: true,
       metrics: {
-        revenue: totalRevenue,
-        foodCostPercent: foodCostClean,
+        revenue: totalRevenue.toFixed(2),
+        foodCostPercent: 'Data needed',
         laborCostPercent: laborCostPercent,
         netMargin: netMargin
       },
