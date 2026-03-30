@@ -456,6 +456,54 @@
       color: rgba(244, 225, 193, 0.25);
     }
 
+    /* ========== INGREDIENT ROWS ========== */
+    .ingredient-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(54, 48, 49, 0.06);
+    }
+
+    .ingredient-row:last-child {
+      border-bottom: none;
+    }
+
+    .ingredient-name {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--espresso);
+    }
+
+    .ingredient-input-wrap {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.85rem;
+      color: rgba(54, 48, 49, 0.45);
+    }
+
+    .ingredient-input-wrap span {
+      color: rgba(54, 48, 49, 0.4);
+    }
+
+    .ingredient-input {
+      width: 80px;
+      padding: 0.4rem 0.6rem;
+      border: 1px solid rgba(54, 48, 49, 0.15);
+      border-radius: 8px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.85rem;
+      color: var(--espresso);
+      text-align: right;
+      outline: none;
+      background: white;
+    }
+
+    .ingredient-input:focus {
+      border-color: var(--rumba);
+    }
+
     /* ========== RESPONSIVE ========== */
     @media (max-width: 768px) {
       .metrics-grid {
@@ -580,6 +628,17 @@
       <p class="upload-sub">Export a sales report from your POS system and upload it here. Square, Toast, and Clover all support CSV export.</p>
       <p class="upload-error" id="uploadError" style="display:none;font-size:0.875rem;color:var(--rumba);margin-top:10px;font-weight:500;"></p>
       <a href="#" id="clearDataLink" style="display:none;font-size:0.8rem;color:#4A4344;margin-top:10px;text-decoration:underline;text-underline-offset:2px;">Clear data and upload new CSV</a>
+    </section>
+
+    <!-- INGREDIENT COSTS -->
+    <section id="ingredientSection" style="display:none;background:var(--vanilla-light);border:1px solid rgba(54,48,49,0.06);border-radius:16px;padding:2rem;margin-bottom:32px;" class="fade-section">
+      <h2 style="font-family:'Fraunces',serif;font-weight:700;font-size:1.15rem;color:var(--espresso);margin-bottom:6px;">What does each dish cost to make?</h2>
+      <p style="font-size:0.9rem;color:rgba(54,48,49,0.5);margin-bottom:24px;">Enter your ingredient cost per portion for each item. You only need to do this once.</p>
+      <div id="ingredientList"></div>
+      <div style="display:flex;align-items:center;gap:16px;margin-top:20px;">
+        <button id="saveIngredientsBtn" style="padding:12px 28px;background:var(--rumba);color:var(--vanilla);font-family:'DM Sans',sans-serif;font-size:0.9rem;font-weight:600;border:none;border-radius:100px;cursor:pointer;">Save &amp; Calculate</button>
+        <span id="ingredientMsg" style="font-size:0.875rem;font-weight:500;color:var(--rumba);opacity:0;transition:opacity 0.4s ease;"></span>
+      </div>
     </section>
 
     <!-- CHAT AGENT -->
@@ -851,6 +910,11 @@
         // Show clear data link
         document.getElementById('clearDataLink').style.display = 'inline-block';
 
+        // Show ingredient cost form if we have unique items
+        if (data.topObservations || window.restaurantData) {
+          showIngredientForm(data);
+        }
+
         // Reset upload UI
         btn.textContent = 'Uploaded';
         btn.style.opacity = '0.6';
@@ -862,6 +926,142 @@
         btn.disabled = false;
       }
     });
+
+    // ===== INGREDIENT COST FORM =====
+    function showIngredientForm(data) {
+      // Extract unique items from the stored data or localStorage
+      var saved = localStorage.getItem('doughboy_metrics');
+      var items = [];
+      if (data && data.topObservations) {
+        // Get items from the raw CSV data stored in window.restaurantData
+        var rd = window.restaurantData;
+        if (rd && rd.metrics) {
+          // Items should come from the API response — we need to pass them
+        }
+      }
+      // Try to get from localStorage
+      var savedItems = localStorage.getItem('doughboy_unique_items');
+      if (savedItems) {
+        try { items = JSON.parse(savedItems); } catch(e) {}
+      }
+      if (items.length === 0 && data && data.uniqueItems) {
+        items = data.uniqueItems;
+      }
+      if (items.length === 0) return;
+
+      // Save items for reload
+      localStorage.setItem('doughboy_unique_items', JSON.stringify(items));
+
+      // Load any previously saved costs
+      var savedCosts = {};
+      var savedCostsStr = localStorage.getItem('doughboy_ingredient_costs');
+      if (savedCostsStr) {
+        try { savedCosts = JSON.parse(savedCostsStr); } catch(e) {}
+      }
+
+      var section = document.getElementById('ingredientSection');
+      var list = document.getElementById('ingredientList');
+      list.innerHTML = '';
+
+      items.forEach(function(item) {
+        var row = document.createElement('div');
+        row.className = 'ingredient-row';
+        var savedVal = savedCosts[item] || '';
+        row.innerHTML = '<span class="ingredient-name">' + item + '</span>' +
+          '<div class="ingredient-input-wrap"><span>$</span>' +
+          '<input type="number" step="0.01" min="0" class="ingredient-input" data-item="' + item.replace(/"/g, '&quot;') + '" placeholder="0.00" value="' + savedVal + '">' +
+          '<span>per portion</span></div>';
+        list.appendChild(row);
+      });
+
+      section.style.display = 'block';
+      setTimeout(function() { section.classList.add('visible'); }, 50);
+    }
+
+    // Save ingredient costs
+    document.getElementById('saveIngredientsBtn').addEventListener('click', async function() {
+      var btn = this;
+      var inputs = document.querySelectorAll('.ingredient-input');
+      var costs = [];
+      var costsMap = {};
+
+      inputs.forEach(function(input) {
+        var val = parseFloat(input.value);
+        var itemName = input.getAttribute('data-item');
+        if (itemName && !isNaN(val) && val > 0) {
+          costs.push({ item_name: itemName, cost_per_portion: val });
+          costsMap[itemName] = val;
+        }
+      });
+
+      if (costs.length === 0) return;
+
+      btn.textContent = 'Saving...';
+      btn.disabled = true;
+
+      try {
+        var res = await fetch('/api/ingredient-costs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: currentUserId, costs: costs })
+        });
+
+        var data = await res.json();
+
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || 'Save failed');
+        }
+
+        // Save costs locally
+        localStorage.setItem('doughboy_ingredient_costs', JSON.stringify(costsMap));
+
+        // Update metric cards
+        if (data.foodCostPercent) {
+          document.getElementById('metricFoodCost').textContent = data.foodCostPercent;
+          document.getElementById('metricFoodCostSub').textContent = 'Based on ingredient costs';
+        }
+        if (data.netMargin) {
+          document.getElementById('metricNetMargin').textContent = data.netMargin;
+        }
+
+        // Update localStorage metrics
+        var savedMetrics = localStorage.getItem('doughboy_metrics');
+        if (savedMetrics) {
+          try {
+            var m = JSON.parse(savedMetrics);
+            m.foodCostPercent = data.foodCostPercent || m.foodCostPercent;
+            m.netMargin = data.netMargin || m.netMargin;
+            localStorage.setItem('doughboy_metrics', JSON.stringify(m));
+          } catch(e) {}
+        }
+
+        // Show success message then hide form
+        var msg = document.getElementById('ingredientMsg');
+        msg.textContent = 'Food costs saved! Doughboy will remember these forever.';
+        msg.style.opacity = '1';
+        btn.textContent = 'Saved';
+
+        setTimeout(function() {
+          msg.style.opacity = '0';
+          document.getElementById('ingredientSection').style.display = 'none';
+        }, 3000);
+
+      } catch (err) {
+        var msg = document.getElementById('ingredientMsg');
+        msg.textContent = err.message || 'Something went wrong.';
+        msg.style.opacity = '1';
+        btn.textContent = 'Save & Calculate';
+        btn.disabled = false;
+        setTimeout(function() { msg.style.opacity = '0'; }, 3000);
+      }
+    });
+
+    // Show ingredient form on page load if items exist
+    var savedUniqueItems = localStorage.getItem('doughboy_unique_items');
+    var savedIngredientCosts = localStorage.getItem('doughboy_ingredient_costs');
+    if (savedUniqueItems && !savedIngredientCosts) {
+      showIngredientForm({ uniqueItems: JSON.parse(savedUniqueItems) });
+    }
 
     // ===== CHAT AGENT =====
     var chatInput = document.getElementById('chatInput');

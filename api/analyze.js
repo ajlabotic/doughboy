@@ -273,6 +273,7 @@ module.exports = async function handler(req, res) {
         netMargin: netMargin
       },
       dateRange: dateRange,
+      uniqueItems: uniqueItems,
       dailyInsight: parsed.dailyInsight || '',
       topObservations: parsed.topObservations || [],
       immediateAction: parsed.immediateAction || ''
