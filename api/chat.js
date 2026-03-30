@@ -42,8 +42,56 @@ module.exports = async function handler(req, res) {
     })
   }
 
-  // Placeholder response — real OpenRouter integration in Phase 4
-  const reply = 'I am getting ready to analyze your data. Upload your POS CSV first and I will have real insights for you.'
+  // Fetch latest CSV data for context
+  const { data: csvData } = await supabase
+    .from('csv_data')
+    .select('raw_data, parsed_summary')
+    .eq('user_id', userId)
+    .order('upload_date', { ascending: false })
+    .limit(1)
+    .single()
+
+  let reply
+
+  if (csvData) {
+    // Call OpenRouter with restaurant data context
+    try {
+      const aiResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + process.env.OPENROUTER_API_KEY,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://doughboy.vercel.app',
+          'X-Title': 'Doughboy'
+        },
+        body: JSON.stringify({
+          model: 'anthropic/claude-haiku-4-5',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are Doughboy, an AI profit agent for independent restaurants. You have access to this restaurant\'s sales data. Always give specific dollar amounts. Never give generic advice. Speak like a knowledgeable friend, not a corporate consultant. The restaurant owner is an expert at their craft — your job is to handle the numbers.'
+            },
+            {
+              role: 'user',
+              content: 'Restaurant: ' + (profile.restaurant_name || 'Unknown') + '\n' +
+                'Latest data summary: ' + JSON.stringify(csvData.raw_data) + '\n' +
+                'AI analysis: ' + JSON.stringify(csvData.parsed_summary) + '\n\n' +
+                'Owner\'s question: ' + message
+            }
+          ],
+          max_tokens: 400
+        })
+      })
+
+      const aiData = await aiResponse.json()
+      reply = (aiData.choices && aiData.choices[0] && aiData.choices[0].message && aiData.choices[0].message.content)
+        || 'I had trouble processing that. Could you try rephrasing your question?'
+    } catch (err) {
+      reply = 'I had trouble connecting right now. Please try again in a moment.'
+    }
+  } else {
+    reply = 'Upload your POS CSV first and I will have real insights for you.'
+  }
 
   // Increment usage counter
   await supabase

@@ -536,30 +536,30 @@
     <section class="metrics-grid fade-section">
       <div class="metric-card">
         <p class="metric-label">Total Revenue</p>
-        <p class="metric-value">$0</p>
-        <p class="metric-sub">Upload your POS data to see real numbers</p>
+        <p class="metric-value" id="metricRevenue">$0</p>
+        <p class="metric-sub" id="metricRevenueSub">Upload your POS data to see real numbers</p>
       </div>
       <div class="metric-card">
         <p class="metric-label">Food Cost %</p>
-        <p class="metric-value">0%</p>
-        <p class="metric-sub">Upload your POS data to see real numbers</p>
+        <p class="metric-value" id="metricFoodCost">0%</p>
+        <p class="metric-sub" id="metricFoodCostSub">Upload your POS data to see real numbers</p>
       </div>
       <div class="metric-card">
         <p class="metric-label">Labor Cost %</p>
-        <p class="metric-value">0%</p>
-        <p class="metric-sub">Upload your POS data to see real numbers</p>
+        <p class="metric-value" id="metricLaborCost">0%</p>
+        <p class="metric-sub" id="metricLaborCostSub">Upload your POS data to see real numbers</p>
       </div>
       <div class="metric-card">
         <p class="metric-label">Net Margin</p>
-        <p class="metric-value">0%</p>
-        <p class="metric-sub">Upload your POS data to see real numbers</p>
+        <p class="metric-value" id="metricNetMargin">0%</p>
+        <p class="metric-sub" id="metricNetMarginSub">Upload your POS data to see real numbers</p>
       </div>
     </section>
 
     <!-- DAILY INSIGHT -->
     <section class="insight-panel fade-section">
       <h2>Today's Insight</h2>
-      <p>Your daily insight report will appear here once you upload your first CSV file.</p>
+      <p id="insightText">Your daily insight report will appear here once you upload your first CSV file.</p>
     </section>
 
     <!-- CSV UPLOAD -->
@@ -578,6 +578,7 @@
         <button class="upload-btn" id="uploadBtn">Upload</button>
       </div>
       <p class="upload-sub">Export a sales report from your POS system and upload it here. Square, Toast, and Clover all support CSV export.</p>
+      <p class="upload-error" id="uploadError" style="display:none;font-size:0.875rem;color:var(--rumba);margin-top:10px;font-weight:500;"></p>
     </section>
 
     <!-- CHAT AGENT -->
@@ -726,8 +727,79 @@
       }
     });
 
-    document.getElementById('uploadBtn').addEventListener('click', function() {
-      alert('CSV upload processing coming soon. Your file is ready to go!');
+    window.restaurantData = null;
+
+    document.getElementById('uploadBtn').addEventListener('click', async function() {
+      var btn = this;
+      var file = csvFileInput.files[0];
+      var uploadError = document.getElementById('uploadError');
+      uploadError.style.display = 'none';
+
+      if (!file) return;
+
+      btn.textContent = 'Analyzing your data...';
+      btn.disabled = true;
+
+      try {
+        var csvText = await new Promise(function(resolve, reject) {
+          var reader = new FileReader();
+          reader.onload = function() { resolve(reader.result); };
+          reader.onerror = function() { reject(new Error('Could not read file')); };
+          reader.readAsText(file);
+        });
+
+        var res = await fetch('/api/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: currentUserId, csvText: csvText })
+        });
+
+        var data = await res.json();
+
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || 'Analysis failed');
+        }
+
+        // Store for chat context
+        window.restaurantData = data;
+
+        // Update metrics
+        var metrics = data.metrics || {};
+        document.getElementById('metricRevenue').textContent = typeof metrics.revenue === 'number'
+          ? '$' + metrics.revenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+          : '$' + (metrics.revenue || '0');
+        document.getElementById('metricRevenueSub').textContent = 'From uploaded POS data';
+
+        document.getElementById('metricFoodCost').textContent = metrics.foodCostPercent || 'N/A';
+        document.getElementById('metricFoodCostSub').textContent = typeof metrics.foodCostPercent === 'string' && metrics.foodCostPercent.includes('Upload')
+          ? metrics.foodCostPercent
+          : 'From AI analysis';
+
+        document.getElementById('metricLaborCost').textContent = metrics.laborCostPercent || 'N/A';
+        document.getElementById('metricLaborCostSub').textContent = 'Upload shift data to calculate';
+
+        document.getElementById('metricNetMargin').textContent = metrics.netMargin || 'N/A';
+        document.getElementById('metricNetMarginSub').textContent = 'Calculating...';
+
+        // Update insight
+        if (data.dailyInsight) {
+          document.getElementById('insightText').textContent = data.dailyInsight;
+        }
+
+        // Update chat welcome
+        var chatWelcome = document.getElementById('chatWelcome');
+        chatWelcome.textContent = 'Your data is loaded! I can see your sales, menu items, and revenue. Ask me anything about your numbers.';
+
+        // Reset upload UI
+        btn.textContent = 'Uploaded';
+        btn.style.opacity = '0.6';
+
+      } catch (err) {
+        uploadError.textContent = err.message || 'Something went wrong. Please try again.';
+        uploadError.style.display = 'block';
+        btn.textContent = 'Upload';
+        btn.disabled = false;
+      }
     });
 
     // ===== CHAT AGENT =====
