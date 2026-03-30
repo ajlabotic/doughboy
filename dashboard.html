@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Doughboy — Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,700;9..144,900&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --vanilla: #F4E1C1;
+      --espresso: #363031;
+      --rumba: #7C2439;
+      --rumba-hover: #5E1A2B;
+      --vanilla-light: #FAF3E8;
+    }
+
+    html {
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      color: var(--espresso);
+      background: var(--vanilla-light);
+      line-height: 1.6;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .dash-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 32px;
+      height: 72px;
+      background: var(--espresso);
+    }
+
+    .dash-logo {
+      font-family: 'Fraunces', serif;
+      font-weight: 900;
+      font-size: 1.65rem;
+      color: var(--vanilla);
+      text-decoration: none;
+      letter-spacing: -0.02em;
+    }
+
+    .dash-logout {
+      padding: 10px 24px;
+      background: transparent;
+      color: rgba(244, 225, 193, 0.65);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.9rem;
+      font-weight: 600;
+      border: 1px solid rgba(244, 225, 193, 0.15);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: color 0.25s ease, border-color 0.25s ease;
+    }
+
+    .dash-logout:hover {
+      color: var(--vanilla);
+      border-color: rgba(244, 225, 193, 0.35);
+    }
+
+    .dash-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 48px 24px;
+      text-align: center;
+    }
+
+    .dash-avatar {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      background: var(--rumba);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Fraunces', serif;
+      font-weight: 900;
+      font-size: 1.5rem;
+      color: var(--vanilla);
+      margin-bottom: 28px;
+    }
+
+    .dash-content h1 {
+      font-family: 'Fraunces', serif;
+      font-weight: 900;
+      font-size: clamp(2rem, 4vw, 2.75rem);
+      color: var(--espresso);
+      margin-bottom: 12px;
+      letter-spacing: -0.03em;
+    }
+
+    .dash-content p {
+      font-size: 1.05rem;
+      color: rgba(54, 48, 49, 0.5);
+      max-width: 420px;
+      margin-bottom: 8px;
+    }
+
+    .dash-user-email {
+      font-size: 0.9rem;
+      color: rgba(54, 48, 49, 0.35);
+      margin-bottom: 40px;
+    }
+
+    .dash-card {
+      padding: 36px 40px;
+      background: white;
+      border-radius: 16px;
+      border: 1px solid rgba(54, 48, 49, 0.06);
+      max-width: 480px;
+      width: 100%;
+    }
+
+    .dash-card p {
+      font-size: 0.95rem;
+      color: rgba(54, 48, 49, 0.55);
+      line-height: 1.65;
+    }
+
+    .dash-card .coming-soon {
+      display: inline-block;
+      margin-top: 16px;
+      padding: 6px 16px;
+      background: rgba(124, 36, 57, 0.08);
+      color: var(--rumba);
+      font-size: 0.8rem;
+      font-weight: 600;
+      border-radius: 100px;
+    }
+
+    @media (max-width: 480px) {
+      .dash-nav {
+        padding: 0 20px;
+      }
+
+      .dash-card {
+        padding: 28px 24px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <nav class="dash-nav">
+    <a href="index.html" class="dash-logo">doughboy</a>
+    <button class="dash-logout" id="logoutBtn">Log out</button>
+  </nav>
+
+  <main class="dash-content">
+    <div class="dash-avatar" id="dashAvatar">D</div>
+    <h1 id="dashGreeting">Welcome back!</h1>
+    <p>Your AI profit agent is getting ready.</p>
+    <p class="dash-user-email" id="dashEmail"></p>
+    <div class="dash-card">
+      <p>Doughboy is setting up your dashboard. Soon you'll see margin insights, menu analysis, and proactive alerts right here.</p>
+      <span class="coming-soon">Full dashboard coming soon</span>
+    </div>
+  </main>
+
+  <script>
+    var SUPABASE_URL = 'https://mnrpnkrhxillcatwtjby.supabase.co';
+    var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1ucnBua3JoeGlsbGNhdHd0amJ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ3OTQwMDIsImV4cCI6MjA5MDM3MDAwMn0.Mjl-wC8-hd3yeqlIZN8WZVRLW-0vluLKR0ZJ25bwVCo';
+
+    var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // ===== AUTH GUARD =====
+    supabase.auth.getSession().then(function(result) {
+      if (!result.data.session) {
+        window.location.href = 'login.html';
+        return;
+      }
+
+      var user = result.data.session.user;
+      var meta = user.user_metadata || {};
+      var firstName = meta.first_name || '';
+      var email = user.email || '';
+
+      if (firstName) {
+        document.getElementById('dashGreeting').textContent = 'Welcome back, ' + firstName + '!';
+        document.getElementById('dashAvatar').textContent = firstName.charAt(0).toUpperCase();
+      }
+
+      document.getElementById('dashEmail').textContent = email;
+    });
+
+    // ===== LOGOUT =====
+    document.getElementById('logoutBtn').addEventListener('click', async function() {
+      await supabase.auth.signOut();
+      window.location.href = 'login.html';
+    });
+  </script>
+
+</body>
+</html>
