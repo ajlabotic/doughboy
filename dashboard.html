@@ -170,6 +170,7 @@
     <h1 id="dashGreeting">Welcome back!</h1>
     <p>Your AI profit agent is getting ready.</p>
     <p class="dash-user-email" id="dashEmail"></p>
+    <button id="testAiBtn" style="background:var(--rumba);color:var(--vanilla);border-radius:100px;padding:0.6rem 1.4rem;font-family:'DM Sans',sans-serif;font-size:0.85rem;font-weight:600;border:none;cursor:pointer;margin-bottom:24px;">Test AI Connection</button>
     <div class="dash-card">
       <p>Doughboy is setting up your dashboard. Soon you'll see margin insights, menu analysis, and proactive alerts right here.</p>
       <span class="coming-soon">Full dashboard coming soon</span>
@@ -200,6 +201,23 @@
       }
 
       document.getElementById('dashEmail').textContent = email;
+    });
+
+    // ===== TEST AI CONNECTION =====
+    document.getElementById('testAiBtn').addEventListener('click', async function() {
+      var btn = this;
+      btn.textContent = 'Testing...';
+      btn.disabled = true;
+      try {
+        var res = await fetch('/api/test', { method: 'POST' });
+        var data = await res.json();
+        alert(data.message || data.error || 'No response');
+        if (data.success) btn.style.display = 'none';
+      } catch (err) {
+        alert('Connection failed: ' + err.message);
+      }
+      btn.textContent = 'Test AI Connection';
+      btn.disabled = false;
     });
 
     // ===== LOGOUT =====
