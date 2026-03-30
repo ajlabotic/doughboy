@@ -579,6 +579,7 @@
       </div>
       <p class="upload-sub">Export a sales report from your POS system and upload it here. Square, Toast, and Clover all support CSV export.</p>
       <p class="upload-error" id="uploadError" style="display:none;font-size:0.875rem;color:var(--rumba);margin-top:10px;font-weight:500;"></p>
+      <a href="#" id="clearDataLink" style="display:none;font-size:0.8rem;color:#4A4344;margin-top:10px;text-decoration:underline;text-underline-offset:2px;">Clear data and upload new CSV</a>
     </section>
 
     <!-- CHAT AGENT -->
@@ -729,6 +730,60 @@
 
     window.restaurantData = null;
 
+    // ===== SHARED DISPLAY FUNCTIONS =====
+    function updateMetricCards(metrics, dateRange) {
+      // Revenue
+      document.getElementById('metricRevenue').textContent = typeof metrics.revenue === 'number' && metrics.revenue > 0
+        ? '$' + metrics.revenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : '$0';
+      document.getElementById('metricRevenueSub').textContent = dateRange && dateRange !== 'Unknown'
+        ? 'Week of ' + dateRange
+        : 'Upload your POS data to see real numbers';
+
+      // Food cost %
+      var fc = metrics.foodCostPercent;
+      document.getElementById('metricFoodCost').textContent = (fc && typeof fc === 'string' && fc.length <= 20) ? fc : (fc ? fc : 'Data needed');
+      document.getElementById('metricFoodCostSub').textContent = 'Based on sale prices';
+
+      // Labor cost %
+      document.getElementById('metricLaborCost').textContent = typeof metrics.laborCostPercent === 'number'
+        ? metrics.laborCostPercent + '%'
+        : 'Add shift data';
+      document.getElementById('metricLaborCostSub').textContent = 'Based on shift data';
+
+      // Net margin
+      document.getElementById('metricNetMargin').textContent = typeof metrics.netMargin === 'number'
+        ? metrics.netMargin + '%'
+        : 'Upload more data';
+      document.getElementById('metricNetMarginSub').textContent = 'After labor costs';
+    }
+
+    function updateInsightPanel(insight) {
+      if (insight) {
+        document.getElementById('insightText').textContent = insight;
+      }
+    }
+
+    // ===== LOAD CACHED METRICS ON PAGE LOAD =====
+    var savedMetrics = localStorage.getItem('doughboy_metrics');
+    if (savedMetrics) {
+      try {
+        var cached = JSON.parse(savedMetrics);
+        updateMetricCards(cached, cached.dateRange || '');
+        updateInsightPanel(cached.dailyInsight);
+        document.getElementById('clearDataLink').style.display = 'inline-block';
+        document.getElementById('chatWelcome').textContent = 'Your data is loaded! I can see your sales, menu items, and revenue. Ask me anything about your numbers.';
+      } catch (e) {}
+    }
+
+    // ===== CLEAR DATA LINK =====
+    document.getElementById('clearDataLink').addEventListener('click', function(e) {
+      e.preventDefault();
+      localStorage.removeItem('doughboy_metrics');
+      location.reload();
+    });
+
+    // ===== CSV UPLOAD HANDLER =====
     document.getElementById('uploadBtn').addEventListener('click', async function() {
       var btn = this;
       var file = csvFileInput.files[0];
@@ -763,42 +818,29 @@
         // Store for chat context
         window.restaurantData = data;
 
-        // Update metrics
         var metrics = data.metrics || {};
         var dateRange = data.dateRange || '';
 
-        // Revenue
-        document.getElementById('metricRevenue').textContent = typeof metrics.revenue === 'number'
-          ? '$' + metrics.revenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-          : '$0';
-        document.getElementById('metricRevenueSub').textContent = dateRange && dateRange !== 'Unknown'
-          ? 'Week of ' + dateRange
-          : 'From uploaded POS data';
+        // Update UI
+        updateMetricCards(metrics, dateRange);
+        updateInsightPanel(data.dailyInsight);
 
-        // Food cost %
-        document.getElementById('metricFoodCost').textContent = metrics.foodCostPercent || 'Data needed';
-        document.getElementById('metricFoodCostSub').textContent = 'Based on sale prices';
-
-        // Labor cost %
-        document.getElementById('metricLaborCost').textContent = typeof metrics.laborCostPercent === 'number'
-          ? metrics.laborCostPercent + '%'
-          : 'Add shift data';
-        document.getElementById('metricLaborCostSub').textContent = 'Based on shift data';
-
-        // Net margin
-        document.getElementById('metricNetMargin').textContent = typeof metrics.netMargin === 'number'
-          ? metrics.netMargin + '%'
-          : 'Upload more data';
-        document.getElementById('metricNetMarginSub').textContent = 'After labor costs';
-
-        // Update insight
-        if (data.dailyInsight) {
-          document.getElementById('insightText').textContent = data.dailyInsight;
-        }
+        // Cache to localStorage
+        localStorage.setItem('doughboy_metrics', JSON.stringify({
+          revenue: metrics.revenue,
+          foodCostPercent: metrics.foodCostPercent,
+          laborCostPercent: metrics.laborCostPercent,
+          netMargin: metrics.netMargin,
+          dateRange: dateRange,
+          dailyInsight: data.dailyInsight,
+          uploadDate: new Date().toISOString()
+        }));
 
         // Update chat welcome
-        var chatWelcome = document.getElementById('chatWelcome');
-        chatWelcome.textContent = 'Your data is loaded! I can see your sales, menu items, and revenue. Ask me anything about your numbers.';
+        document.getElementById('chatWelcome').textContent = 'Your data is loaded! I can see your sales, menu items, and revenue. Ask me anything about your numbers.';
+
+        // Show clear data link
+        document.getElementById('clearDataLink').style.display = 'inline-block';
 
         // Reset upload UI
         btn.textContent = 'Uploaded';

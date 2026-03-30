@@ -90,12 +90,8 @@ module.exports = async function handler(req, res) {
     }
 
     // STEP 2 — Build analysis context
-    var qtyVariations = ['quantity', 'qty', 'count', 'units', 'items sold', 'qty sold']
-    var priceVariations = ['sale price', 'price', 'unit price', 'menu price', 'item price', 'selling price']
     var itemVariations = ['item', 'item name', 'product', 'menu item', 'description', 'item description', 'name']
     var dateVariations = ['date', 'order date', 'sale date', 'transaction date', 'day']
-    var hoursVariations = ['hours worked', 'hours', 'labor hours', 'shift hours', 'total hours']
-    var rateVariations = ['hourly rate', 'rate', 'pay rate', 'wage', 'hourly pay', 'hourly wage']
 
     var totalRevenue = 0
     var totalLaborCost = 0
@@ -103,20 +99,56 @@ module.exports = async function handler(req, res) {
     var uniqueItemsSet = {}
     var dates = []
 
+    // Log column names for debugging
+    var columnNames = parsedRows.length > 0 ? Object.keys(parsedRows[0]) : []
+    console.log('CSV column names found:', columnNames)
+    console.log('First 3 rows:', JSON.stringify(parsedRows.slice(0, 3), null, 2))
+
     for (var i = 0; i < parsedRows.length; i++) {
       var row = parsedRows[i]
+      var rowRevenue = 0
 
-      // Revenue = quantity * sale price per row
-      var qtyVal = parseNum(findColumn(row, qtyVariations))
-      var priceVal = parseNum(findColumn(row, priceVariations))
-      if (!isNaN(qtyVal) && !isNaN(priceVal)) {
-        totalRevenue += qtyVal * priceVal
+      // Approach A — multiply quantity * sale price
+      var qty = parseNum(row['quantity'] || row['qty'] || row['count'] || row['units'] || row['items sold'] || row['qty sold'])
+      var price = parseNum(row['sale price'] || row['price'] || row['unit price'] || row['menu price'] || row['item price'] || row['selling price'])
+
+      if (isNaN(qty)) qty = 1
+      if (!isNaN(price) && price > 0) {
+        rowRevenue = qty * price
+      }
+
+      // Approach B — if Approach A gives 0, look for pre-calculated total columns
+      if (rowRevenue === 0) {
+        var totalVal = parseNum(row['total'] || row['amount'] || row['gross sales'] || row['revenue'] || row['net sales'] || row['sales'] || row['total sales'] || row['gross amount'] || row['net amount'])
+        if (!isNaN(totalVal) && totalVal > 0) {
+          rowRevenue = totalVal
+        }
+      }
+
+      // Approach C — if still 0, find any numeric column that looks like dollars
+      if (rowRevenue === 0) {
+        for (var key in row) {
+          var val = row[key]
+          if (typeof val === 'string' && val.match(/^\$?\d+[\d,]*\.?\d*$/)) {
+            var candidate = parseNum(val)
+            if (!isNaN(candidate) && candidate > 0 && candidate < 100000) {
+              rowRevenue = candidate
+              break
+            }
+          }
+        }
+      }
+
+      totalRevenue += rowRevenue
+
+      if (i < 3) {
+        console.log('Row ' + i + ' revenue:', rowRevenue, '| qty:', qty, '| price:', price)
       }
 
       // Labor = hours worked * hourly rate per row
-      var hoursVal = parseNum(findColumn(row, hoursVariations))
-      var rateVal = parseNum(findColumn(row, rateVariations))
-      if (!isNaN(hoursVal) && !isNaN(rateVal)) {
+      var hoursVal = parseNum(row['hours worked'] || row['hours'] || row['labor hours'] || row['shift hours'] || row['total hours'])
+      var rateVal = parseNum(row['hourly rate'] || row['rate'] || row['pay rate'] || row['wage'] || row['hourly pay'] || row['hourly wage'])
+      if (!isNaN(hoursVal) && !isNaN(rateVal) && hoursVal > 0 && rateVal > 0) {
         totalLaborCost += hoursVal * rateVal
         hasLaborData = true
       }
@@ -134,6 +166,9 @@ module.exports = async function handler(req, res) {
     var uniqueItems = Object.keys(uniqueItemsSet)
     totalRevenue = Math.round(totalRevenue * 100) / 100
     totalLaborCost = Math.round(totalLaborCost * 100) / 100
+
+    console.log('Total revenue calculated:', totalRevenue)
+    console.log('Total labor cost:', totalLaborCost)
 
     // Calculate labor cost % and net margin
     var laborCostPercent = null
@@ -201,15 +236,20 @@ module.exports = async function handler(req, res) {
     var aiData = await aiResponse.json()
     var aiContent = (aiData.choices && aiData.choices[0] && aiData.choices[0].message && aiData.choices[0].message.content) || '{}'
 
-    // STEP 4 — Parse AI response, strip markdown backticks
-    var jsonStr = aiContent.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
+    // STEP 4 — Parse AI response, extract JSON robustly
     var parsed = {}
     try {
-      parsed = JSON.parse(jsonStr)
+      var jsonMatch = aiContent.match(/\{[\s\S]*\}/)
+      if (jsonMatch) {
+        parsed = JSON.parse(jsonMatch[0])
+      } else {
+        throw new Error('No JSON found')
+      }
     } catch (e) {
+      console.log('AI JSON parse failed, raw content:', aiContent)
       parsed = {
-        dailyInsight: aiContent,
-        foodCostPercent: 'Unable to estimate from this data',
+        dailyInsight: aiContent.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim(),
+        foodCostPercent: null,
         topObservations: ['Data uploaded successfully', 'Add ingredient costs for deeper analysis', 'Ask me specific questions about your menu'],
         immediateAction: 'Review your top selling items and check their margins'
       }
