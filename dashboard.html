@@ -38,6 +38,19 @@
       flex-direction: column;
     }
 
+    /* ========== FADE IN ========== */
+    .fade-section {
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1), transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .fade-section.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* ========== NAV ========== */
     .dash-nav {
       display: flex;
       align-items: center;
@@ -45,6 +58,7 @@
       padding: 0 32px;
       height: 72px;
       background: var(--espresso);
+      flex-shrink: 0;
     }
 
     .dash-logo {
@@ -54,6 +68,18 @@
       color: var(--vanilla);
       text-decoration: none;
       letter-spacing: -0.02em;
+    }
+
+    .dash-nav-right {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .dash-restaurant-name {
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: rgba(244, 225, 193, 0.5);
     }
 
     .dash-logout {
@@ -74,117 +100,535 @@
       border-color: rgba(244, 225, 193, 0.35);
     }
 
-    .dash-content {
+    /* ========== MAIN CONTENT ========== */
+    .dash-main {
       flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 48px 24px;
-      text-align: center;
+      max-width: 1080px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 40px 24px 0;
     }
 
-    .dash-avatar {
-      width: 72px;
-      height: 72px;
-      border-radius: 50%;
-      background: var(--rumba);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-family: 'Fraunces', serif;
-      font-weight: 900;
-      font-size: 1.5rem;
-      color: var(--vanilla);
-      margin-bottom: 28px;
+    /* ========== WELCOME HEADER ========== */
+    .dash-welcome {
+      margin-bottom: 36px;
     }
 
-    .dash-content h1 {
+    .dash-welcome h1 {
       font-family: 'Fraunces', serif;
       font-weight: 900;
-      font-size: clamp(2rem, 4vw, 2.75rem);
+      font-size: clamp(1.75rem, 3.5vw, 2.25rem);
       color: var(--espresso);
-      margin-bottom: 12px;
       letter-spacing: -0.03em;
+      margin-bottom: 4px;
     }
 
-    .dash-content p {
-      font-size: 1.05rem;
+    .dash-welcome p {
+      font-size: 1rem;
       color: rgba(54, 48, 49, 0.5);
-      max-width: 420px;
+    }
+
+    /* ========== METRICS ROW ========== */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 20px;
+      margin-bottom: 32px;
+    }
+
+    .metric-card {
+      background: var(--vanilla-light);
+      border: 1px solid rgba(54, 48, 49, 0.06);
+      border-radius: 16px;
+      padding: 24px;
+    }
+
+    .metric-label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: rgba(54, 48, 49, 0.45);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
       margin-bottom: 8px;
     }
 
-    .dash-user-email {
-      font-size: 0.9rem;
+    .metric-value {
+      font-family: 'Fraunces', serif;
+      font-weight: 900;
+      font-size: 2rem;
+      color: var(--espresso);
+      line-height: 1.1;
+      margin-bottom: 6px;
+    }
+
+    .metric-sub {
+      font-size: 0.75rem;
       color: rgba(54, 48, 49, 0.35);
-      margin-bottom: 40px;
+      line-height: 1.4;
     }
 
-    .dash-card {
-      padding: 36px 40px;
-      background: white;
-      border-radius: 16px;
+    /* ========== DAILY INSIGHT ========== */
+    .insight-panel {
+      background: var(--vanilla-light);
       border: 1px solid rgba(54, 48, 49, 0.06);
-      max-width: 480px;
-      width: 100%;
+      border-left: 4px solid var(--rumba);
+      border-radius: 16px;
+      padding: 2rem;
+      margin-bottom: 32px;
     }
 
-    .dash-card p {
-      font-size: 0.95rem;
-      color: rgba(54, 48, 49, 0.55);
+    .insight-panel h2 {
+      font-family: 'Fraunces', serif;
+      font-weight: 700;
+      font-size: 1.15rem;
+      color: var(--espresso);
+      margin-bottom: 10px;
+    }
+
+    .insight-panel p {
+      font-size: 0.925rem;
+      color: rgba(54, 48, 49, 0.5);
       line-height: 1.65;
     }
 
-    .dash-card .coming-soon {
-      display: inline-block;
-      margin-top: 16px;
-      padding: 6px 16px;
+    /* ========== CSV UPLOAD ========== */
+    .upload-section {
+      margin-bottom: 32px;
+    }
+
+    .upload-section h2 {
+      font-family: 'Fraunces', serif;
+      font-weight: 700;
+      font-size: 1.15rem;
+      color: var(--espresso);
+      margin-bottom: 14px;
+    }
+
+    .upload-zone {
+      border: 2px dashed var(--rumba);
+      border-radius: 16px;
+      padding: 48px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: background 0.25s ease, border-color 0.25s ease;
+      position: relative;
+    }
+
+    .upload-zone:hover,
+    .upload-zone.dragover {
+      background: rgba(124, 36, 57, 0.04);
+      border-color: var(--rumba-hover);
+    }
+
+    .upload-zone-icon {
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 16px;
+      border-radius: 12px;
       background: rgba(124, 36, 57, 0.08);
-      color: var(--rumba);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .upload-zone-icon svg {
+      width: 24px;
+      height: 24px;
+      stroke: var(--rumba);
+    }
+
+    .upload-zone p {
+      font-size: 0.95rem;
+      color: rgba(54, 48, 49, 0.55);
+      margin-bottom: 4px;
+    }
+
+    .upload-zone .upload-hint {
       font-size: 0.8rem;
+      color: rgba(54, 48, 49, 0.3);
+    }
+
+    .upload-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+
+    .upload-file-info {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 14px;
+      padding: 12px 18px;
+      background: rgba(124, 36, 57, 0.05);
+      border-radius: 10px;
+    }
+
+    .upload-file-info.visible {
+      display: flex;
+    }
+
+    .upload-file-name {
+      font-size: 0.875rem;
       font-weight: 600;
+      color: var(--espresso);
+    }
+
+    .upload-btn {
+      padding: 10px 24px;
+      background: var(--rumba);
+      color: var(--vanilla);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.85rem;
+      font-weight: 600;
+      border: none;
       border-radius: 100px;
+      cursor: pointer;
+      transition: background 0.25s ease, transform 0.25s ease;
+    }
+
+    .upload-btn:hover {
+      background: var(--rumba-hover);
+      transform: translateY(-1px);
+    }
+
+    .upload-sub {
+      font-size: 0.825rem;
+      color: rgba(54, 48, 49, 0.4);
+      margin-top: 14px;
+      line-height: 1.5;
+    }
+
+    /* ========== CHAT AGENT ========== */
+    .chat-section {
+      margin-bottom: 40px;
+    }
+
+    .chat-section h2 {
+      font-family: 'Fraunces', serif;
+      font-weight: 700;
+      font-size: 1.15rem;
+      color: var(--espresso);
+      margin-bottom: 14px;
+    }
+
+    .chat-window {
+      background: white;
+      border: 1px solid rgba(54, 48, 49, 0.06);
+      border-radius: 16px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .chat-messages {
+      height: 400px;
+      overflow-y: auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .chat-msg {
+      max-width: 80%;
+      padding: 14px 18px;
+      border-radius: 16px;
+      font-size: 0.9rem;
+      line-height: 1.55;
+    }
+
+    .chat-msg.bot {
+      align-self: flex-start;
+      background: var(--vanilla-light);
+      color: var(--espresso);
+      border-bottom-left-radius: 4px;
+    }
+
+    .chat-msg.user {
+      align-self: flex-end;
+      background: var(--rumba);
+      color: var(--vanilla);
+      border-bottom-right-radius: 4px;
+    }
+
+    .chat-input-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 16px 20px;
+      border-top: 1px solid rgba(54, 48, 49, 0.06);
+      background: rgba(54, 48, 49, 0.015);
+    }
+
+    .chat-input-bar input {
+      flex: 1;
+      padding: 12px 16px;
+      border: 1.5px solid rgba(54, 48, 49, 0.1);
+      border-radius: 100px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.9rem;
+      color: var(--espresso);
+      background: white;
+      outline: none;
+      transition: border-color 0.25s ease;
+    }
+
+    .chat-input-bar input::placeholder {
+      color: rgba(54, 48, 49, 0.3);
+    }
+
+    .chat-input-bar input:focus {
+      border-color: var(--rumba);
+    }
+
+    .chat-send-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--rumba);
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.25s ease, transform 0.25s ease;
+    }
+
+    .chat-send-btn:hover {
+      background: var(--rumba-hover);
+      transform: translateY(-1px);
+    }
+
+    .chat-send-btn svg {
+      width: 18px;
+      height: 18px;
+      fill: var(--vanilla);
+      transform: rotate(-45deg);
+    }
+
+    .chat-usage {
+      padding: 10px 20px;
+      font-size: 0.75rem;
+      color: rgba(54, 48, 49, 0.35);
+      text-align: center;
+      border-top: 1px solid rgba(54, 48, 49, 0.04);
+    }
+
+    /* ========== FOOTER ========== */
+    .dash-footer {
+      padding: 48px 24px 32px;
+      background: var(--espresso);
+      margin-top: auto;
+    }
+
+    .dash-footer-inner {
+      max-width: 1080px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .dash-footer-links {
+      display: flex;
+      gap: 28px;
+      list-style: none;
+    }
+
+    .dash-footer-links a {
+      font-size: 0.85rem;
+      color: rgba(244, 225, 193, 0.4);
+      text-decoration: none;
+      transition: color 0.2s ease;
+    }
+
+    .dash-footer-links a:hover {
+      color: var(--vanilla);
+    }
+
+    .dash-footer-copy {
+      font-size: 0.8rem;
+      color: rgba(244, 225, 193, 0.25);
+    }
+
+    /* ========== RESPONSIVE ========== */
+    @media (max-width: 768px) {
+      .metrics-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .dash-restaurant-name {
+        display: none;
+      }
+
+      .chat-msg {
+        max-width: 90%;
+      }
+
+      .dash-footer-inner {
+        flex-direction: column;
+        text-align: center;
+      }
     }
 
     @media (max-width: 480px) {
       .dash-nav {
-        padding: 0 20px;
+        padding: 0 16px;
       }
 
-      .dash-card {
-        padding: 28px 24px;
+      .dash-main {
+        padding: 28px 16px 0;
+      }
+
+      .metrics-grid {
+        gap: 12px;
+      }
+
+      .metric-card {
+        padding: 18px;
+      }
+
+      .metric-value {
+        font-size: 1.5rem;
+      }
+
+      .upload-zone {
+        padding: 32px 16px;
+      }
+
+      .chat-messages {
+        height: 320px;
+        padding: 16px;
+      }
+
+      .chat-input-bar {
+        padding: 12px 14px;
       }
     }
   </style>
 </head>
 <body>
 
+  <!-- ==================== NAV ==================== -->
   <nav class="dash-nav">
     <a href="index.html" class="dash-logo">doughboy</a>
-    <button class="dash-logout" id="logoutBtn">Log out</button>
+    <div class="dash-nav-right">
+      <span class="dash-restaurant-name" id="navRestaurant"></span>
+      <button class="dash-logout" id="logoutBtn">Log out</button>
+    </div>
   </nav>
 
-  <main class="dash-content">
-    <div class="dash-avatar" id="dashAvatar">D</div>
-    <h1 id="dashGreeting">Welcome back!</h1>
-    <p>Your AI profit agent is getting ready.</p>
-    <p class="dash-user-email" id="dashEmail"></p>
-    <button id="testAiBtn" style="background:var(--rumba);color:var(--vanilla);border-radius:100px;padding:0.6rem 1.4rem;font-family:'DM Sans',sans-serif;font-size:0.85rem;font-weight:600;border:none;cursor:pointer;margin-bottom:24px;">Test AI Connection</button>
-    <div class="dash-card">
-      <p>Doughboy is setting up your dashboard. Soon you'll see margin insights, menu analysis, and proactive alerts right here.</p>
-      <span class="coming-soon">Full dashboard coming soon</span>
-    </div>
-  </main>
+  <!-- ==================== MAIN ==================== -->
+  <div class="dash-main">
 
+    <!-- WELCOME -->
+    <section class="dash-welcome fade-section">
+      <h1 id="dashGreeting">Good morning!</h1>
+      <p id="dashSubline">Here is how your restaurant is doing today.</p>
+    </section>
+
+    <!-- KEY METRICS -->
+    <section class="metrics-grid fade-section">
+      <div class="metric-card">
+        <p class="metric-label">Total Revenue</p>
+        <p class="metric-value">$0</p>
+        <p class="metric-sub">Upload your POS data to see real numbers</p>
+      </div>
+      <div class="metric-card">
+        <p class="metric-label">Food Cost %</p>
+        <p class="metric-value">0%</p>
+        <p class="metric-sub">Upload your POS data to see real numbers</p>
+      </div>
+      <div class="metric-card">
+        <p class="metric-label">Labor Cost %</p>
+        <p class="metric-value">0%</p>
+        <p class="metric-sub">Upload your POS data to see real numbers</p>
+      </div>
+      <div class="metric-card">
+        <p class="metric-label">Net Margin</p>
+        <p class="metric-value">0%</p>
+        <p class="metric-sub">Upload your POS data to see real numbers</p>
+      </div>
+    </section>
+
+    <!-- DAILY INSIGHT -->
+    <section class="insight-panel fade-section">
+      <h2>Today's Insight</h2>
+      <p>Your daily insight report will appear here once you upload your first CSV file.</p>
+    </section>
+
+    <!-- CSV UPLOAD -->
+    <section class="upload-section fade-section">
+      <h2>Upload Your POS Data</h2>
+      <div class="upload-zone" id="uploadZone">
+        <div class="upload-zone-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </div>
+        <p>Drag your CSV here or click to upload</p>
+        <p class="upload-hint">.csv and .xlsx files accepted</p>
+        <input type="file" id="csvFileInput" accept=".csv,.xlsx">
+      </div>
+      <div class="upload-file-info" id="uploadFileInfo">
+        <span class="upload-file-name" id="uploadFileName"></span>
+        <button class="upload-btn" id="uploadBtn">Upload</button>
+      </div>
+      <p class="upload-sub">Export a sales report from your POS system and upload it here. Square, Toast, and Clover all support CSV export.</p>
+    </section>
+
+    <!-- CHAT AGENT -->
+    <section class="chat-section fade-section">
+      <h2>Ask Doughboy</h2>
+      <div class="chat-window">
+        <div class="chat-messages" id="chatMessages">
+          <div class="chat-msg bot" id="chatWelcome">Hey! I'm Doughboy, your AI profit agent. Upload your POS data and I'll start finding ways to protect your margins. Ask me anything.</div>
+        </div>
+        <div class="chat-input-bar">
+          <input type="text" id="chatInput" placeholder="Ask Doughboy anything...">
+          <button class="chat-send-btn" id="chatSendBtn" aria-label="Send">
+            <svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
+          </button>
+        </div>
+        <div class="chat-usage">10 of 10 questions remaining this month</div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ==================== FOOTER ==================== -->
+  <footer class="dash-footer">
+    <div class="dash-footer-inner">
+      <ul class="dash-footer-links">
+        <li><a href="index.html#how-it-works">How it works</a></li>
+        <li><a href="index.html#pricing">Pricing</a></li>
+        <li><a href="founder.html">Our Story</a></li>
+        <li><a href="#">Contact</a></li>
+      </ul>
+      <p class="dash-footer-copy">&copy; 2026 Doughboy. Made in Jacksonville.</p>
+    </div>
+  </footer>
+
+  <!-- ==================== SCRIPTS ==================== -->
   <script>
     var SUPABASE_URL = 'https://mnrpnkrhxillcatwtjby.supabase.co';
     var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1ucnBua3JoeGlsbGNhdHd0amJ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ3OTQwMDIsImV4cCI6MjA5MDM3MDAwMn0.Mjl-wC8-hd3yeqlIZN8WZVRLW-0vluLKR0ZJ25bwVCo';
 
     var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    // ===== AUTH GUARD =====
-    supabase.auth.getSession().then(function(result) {
+    // ===== TIME-BASED GREETING =====
+    function getGreeting() {
+      var h = new Date().getHours();
+      if (h < 12) return 'Good morning';
+      if (h < 17) return 'Good afternoon';
+      return 'Good evening';
+    }
+
+    // ===== AUTH GUARD + PROFILE LOAD =====
+    supabase.auth.getSession().then(async function(result) {
       if (!result.data.session) {
         window.location.href = 'login.html';
         return;
@@ -193,37 +637,121 @@
       var user = result.data.session.user;
       var meta = user.user_metadata || {};
       var firstName = meta.first_name || '';
-      var email = user.email || '';
+      var restaurantName = meta.restaurant_name || '';
 
+      // Try to get profile from profiles table
+      var profile = await supabase
+        .from('profiles')
+        .select('first_name, restaurant_name')
+        .eq('id', user.id)
+        .single();
+
+      if (profile.data) {
+        firstName = profile.data.first_name || firstName;
+        restaurantName = profile.data.restaurant_name || restaurantName;
+      }
+
+      // Populate UI
+      var greeting = getGreeting();
+      document.getElementById('dashGreeting').textContent = firstName
+        ? greeting + ', ' + firstName + '!'
+        : greeting + '!';
+
+      document.getElementById('dashSubline').textContent = restaurantName
+        ? 'Here is how ' + restaurantName + ' is doing today.'
+        : 'Here is how your restaurant is doing today.';
+
+      document.getElementById('navRestaurant').textContent = restaurantName || '';
+
+      // Personalize chat welcome
       if (firstName) {
-        document.getElementById('dashGreeting').textContent = 'Welcome back, ' + firstName + '!';
-        document.getElementById('dashAvatar').textContent = firstName.charAt(0).toUpperCase();
+        document.getElementById('chatWelcome').textContent =
+          'Hey ' + firstName + '! I\'m Doughboy, your AI profit agent. Upload your POS data and I\'ll start finding ways to protect your margins. Ask me anything.';
       }
 
-      document.getElementById('dashEmail').textContent = email;
-    });
-
-    // ===== TEST AI CONNECTION =====
-    document.getElementById('testAiBtn').addEventListener('click', async function() {
-      var btn = this;
-      btn.textContent = 'Testing...';
-      btn.disabled = true;
-      try {
-        var res = await fetch('/api/test', { method: 'POST' });
-        var data = await res.json();
-        alert(data.message || data.error || 'No response');
-        if (data.success) btn.style.display = 'none';
-      } catch (err) {
-        alert('Connection failed: ' + err.message);
-      }
-      btn.textContent = 'Test AI Connection';
-      btn.disabled = false;
+      // Fade in sections after data loads
+      var sections = document.querySelectorAll('.fade-section');
+      sections.forEach(function(el, i) {
+        setTimeout(function() {
+          el.classList.add('visible');
+        }, i * 100);
+      });
     });
 
     // ===== LOGOUT =====
     document.getElementById('logoutBtn').addEventListener('click', async function() {
       await supabase.auth.signOut();
       window.location.href = 'login.html';
+    });
+
+    // ===== CSV UPLOAD UI =====
+    var uploadZone = document.getElementById('uploadZone');
+    var csvFileInput = document.getElementById('csvFileInput');
+    var uploadFileInfo = document.getElementById('uploadFileInfo');
+    var uploadFileName = document.getElementById('uploadFileName');
+
+    csvFileInput.addEventListener('change', function() {
+      if (this.files.length > 0) {
+        uploadFileName.textContent = this.files[0].name;
+        uploadFileInfo.classList.add('visible');
+      }
+    });
+
+    uploadZone.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      uploadZone.classList.add('dragover');
+    });
+
+    uploadZone.addEventListener('dragleave', function() {
+      uploadZone.classList.remove('dragover');
+    });
+
+    uploadZone.addEventListener('drop', function(e) {
+      e.preventDefault();
+      uploadZone.classList.remove('dragover');
+      if (e.dataTransfer.files.length > 0) {
+        csvFileInput.files = e.dataTransfer.files;
+        uploadFileName.textContent = e.dataTransfer.files[0].name;
+        uploadFileInfo.classList.add('visible');
+      }
+    });
+
+    document.getElementById('uploadBtn').addEventListener('click', function() {
+      alert('CSV upload processing coming soon. Your file is ready to go!');
+    });
+
+    // ===== CHAT PLACEHOLDER =====
+    var chatInput = document.getElementById('chatInput');
+    var chatMessages = document.getElementById('chatMessages');
+    var chatSendBtn = document.getElementById('chatSendBtn');
+
+    function sendMessage() {
+      var text = chatInput.value.trim();
+      if (!text) return;
+
+      // User message
+      var userMsg = document.createElement('div');
+      userMsg.className = 'chat-msg user';
+      userMsg.textContent = text;
+      chatMessages.appendChild(userMsg);
+
+      chatInput.value = '';
+
+      // Bot response (placeholder)
+      setTimeout(function() {
+        var botMsg = document.createElement('div');
+        botMsg.className = 'chat-msg bot';
+        botMsg.textContent = 'Upload your POS data first so I have something to work with!';
+        chatMessages.appendChild(botMsg);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }, 600);
+
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    chatSendBtn.addEventListener('click', sendMessage);
+    chatInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') sendMessage();
     });
   </script>
 
