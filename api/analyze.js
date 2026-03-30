@@ -160,22 +160,19 @@ module.exports = async function handler(req, res) {
 
     var uniqueItems = Object.keys(uniqueItemsSet)
 
-    // Build item quantities map (deduplicated same as revenue)
+    // Build item quantities map (deduplicated by date+item, matching revenue dedup)
     var itemQuantities = {}
+    var seenItemKeys = {}
     parsedRows.forEach(function(row) {
       var name = row.item_name || row.item || row.product || row.menu_item || null
+      if (!name) return
       var qty = parseFloat(row.quantity || row.qty || 1) || 1
-      var dateItemKey = (row.date || '') + '_' + (name || '')
-      // Only count each date+item combo once (matches revenue dedup)
-      if (name && !itemQuantities['__seen_' + dateItemKey]) {
+      var dateItemKey = (row.date || '') + '_' + name
+      if (!seenItemKeys[dateItemKey]) {
         if (!itemQuantities[name]) itemQuantities[name] = 0
         itemQuantities[name] += qty
-        itemQuantities['__seen_' + dateItemKey] = true
+        seenItemKeys[dateItemKey] = true
       }
-    })
-    // Remove tracking keys
-    Object.keys(itemQuantities).forEach(function(k) {
-      if (k.indexOf('__seen_') === 0) delete itemQuantities[k]
     })
 
     console.log('Item quantities:', itemQuantities)
@@ -275,7 +272,7 @@ module.exports = async function handler(req, res) {
           totalRows: parsedRows.length,
           totalRevenue: parseFloat(totalRevenue.toFixed(2)),
           totalLaborCost: parseFloat(totalLaborCost.toFixed(2)),
-          laborCostPercent: laborCostPercent,
+          laborCostPercent: totalRevenue > 0 ? parseFloat(((totalLaborCost / totalRevenue) * 100).toFixed(1)) : 0,
           netMargin: netMargin,
           uniqueItems: uniqueItems,
           itemQuantities: itemQuantities,

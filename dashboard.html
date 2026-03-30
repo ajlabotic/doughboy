@@ -580,8 +580,9 @@
       <p class="upload-sub">Export a sales report from your POS system and upload it here. Square, Toast, and Clover all support CSV export.</p>
       <p class="upload-error" id="uploadError" style="display:none;font-size:0.875rem;color:var(--rumba);margin-top:10px;font-weight:500;"></p>
       <a href="#" id="clearDataLink" style="display:none;font-size:0.8rem;color:#4A4344;margin-top:10px;text-decoration:underline;text-underline-offset:2px;">Clear data and upload new CSV</a>
-      <button id="edit-costs-btn" onclick="showIngredientCostForm()" style="background:transparent;border:1.5px solid var(--rumba);color:var(--rumba);border-radius:100px;padding:0.5rem 1.2rem;font-family:DM Sans,sans-serif;font-size:0.8rem;font-weight:600;cursor:pointer;margin-top:0.75rem;display:block;">Edit ingredient costs</button>
     </section>
+
+    <button id="edit-costs-btn" style="background:transparent;border:1.5px solid var(--rumba);color:var(--rumba);border-radius:100px;padding:0.5rem 1.2rem;font-family:DM Sans,sans-serif;font-size:0.8rem;font-weight:600;cursor:pointer;margin-top:0.75rem;margin-bottom:1.5rem;display:block;">Edit ingredient costs</button>
 
     <!-- CHAT AGENT -->
     <section class="chat-section fade-section">
@@ -872,12 +873,19 @@
               '</div></div>';
           });
 
-          formHTML += '<button id="save-ingredient-costs" onclick="saveIngredientCosts()" style="margin-top:1.5rem;background:var(--rumba);color:var(--vanilla);border:none;border-radius:100px;padding:0.8rem 2rem;font-family:DM Sans,sans-serif;font-size:0.9rem;font-weight:600;cursor:pointer;width:100%;">Save and Calculate Food Cost</button></div>';
+          formHTML += '<button id="save-ingredient-costs" style="margin-top:1.5rem;background:var(--rumba);color:var(--vanilla);border:none;border-radius:100px;padding:0.8rem 2rem;font-family:DM Sans,sans-serif;font-size:0.9rem;font-weight:600;cursor:pointer;width:100%;">Save and Calculate Food Cost</button></div>';
 
-          var uploadSection = document.querySelector('.upload-section');
-          if (uploadSection) {
-            uploadSection.insertAdjacentHTML('afterend', formHTML);
+          var editBtn2 = document.getElementById('edit-costs-btn');
+          if (editBtn2) {
+            editBtn2.insertAdjacentHTML('afterend', formHTML);
+          } else {
+            var uploadSection2 = document.querySelector('.upload-section');
+            if (uploadSection2) uploadSection2.insertAdjacentHTML('afterend', formHTML);
           }
+
+          // Attach save handler
+          document.getElementById('save-ingredient-costs')
+            .addEventListener('click', saveIngredientCosts);
         }
 
         // Reset upload UI
@@ -976,8 +984,8 @@
       if (e.key === 'Enter') sendMessage();
     });
 
-    // ===== SHOW INGREDIENT COST FORM (global for onclick) =====
-    window.showIngredientCostForm = async function() {
+    // ===== SHOW INGREDIENT COST FORM =====
+    async function showIngredientCostForm() {
       // Remove existing form if present
       var existingForm = document.getElementById('ingredient-cost-form');
       if (existingForm) { existingForm.remove(); return; }
@@ -1038,16 +1046,29 @@
           '</div></div>';
       });
 
-      formHTML += '<button id="save-ingredient-costs" onclick="saveIngredientCosts()" style="margin-top:1.5rem;background:var(--rumba);color:var(--vanilla);border:none;border-radius:100px;padding:0.8rem 2rem;font-family:DM Sans,sans-serif;font-size:0.9rem;font-weight:600;cursor:pointer;width:100%;">Save and Calculate Food Cost</button></div>';
+      formHTML += '<button id="save-ingredient-costs" style="margin-top:1.5rem;background:var(--rumba);color:var(--vanilla);border:none;border-radius:100px;padding:0.8rem 2rem;font-family:DM Sans,sans-serif;font-size:0.9rem;font-weight:600;cursor:pointer;width:100%;">Save and Calculate Food Cost</button></div>';
 
-      var uploadSection = document.querySelector('.upload-section');
-      if (uploadSection) {
-        uploadSection.insertAdjacentHTML('afterend', formHTML);
+      var editBtn = document.getElementById('edit-costs-btn');
+      if (editBtn) {
+        editBtn.insertAdjacentHTML('afterend', formHTML);
+      } else {
+        var uploadSection = document.querySelector('.upload-section');
+        if (uploadSection) {
+          uploadSection.insertAdjacentHTML('afterend', formHTML);
+        }
       }
-    };
 
-    // ===== SAVE INGREDIENT COSTS (global for onclick) =====
-    window.saveIngredientCosts = async function() {
+      // Attach save handler via addEventListener
+      document.getElementById('save-ingredient-costs')
+        .addEventListener('click', saveIngredientCosts);
+    }
+
+    // ===== EDIT COSTS BUTTON =====
+    document.getElementById('edit-costs-btn')
+      .addEventListener('click', showIngredientCostForm);
+
+    // ===== SAVE INGREDIENT COSTS =====
+    async function saveIngredientCosts() {
       var btn = document.getElementById('save-ingredient-costs');
       btn.textContent = 'Saving...';
       btn.disabled = true;
@@ -1105,7 +1126,7 @@
         btn.disabled = false;
         alert('Something went wrong. Please try again.');
       }
-    };
+    }
   </script>
 
 </body>

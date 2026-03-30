@@ -49,22 +49,21 @@ module.exports = async function handler(req, res) {
     if (csvResult.data && csvResult.data.raw_data) {
       var rawData = csvResult.data.raw_data
       var itemQuantities = rawData.itemQuantities || {}
-      var totalRevenue = parseFloat(rawData.totalRevenue) || 1
+      var totalRevenue = parseFloat(rawData.totalRevenue) || 0
+      var laborPercent = parseFloat(rawData.laborCostPercent) || 0
 
-      // Parse labor cost % from stored value
-      var laborPercent = 0
-      if (rawData.laborCostPercent && typeof rawData.laborCostPercent === 'string') {
-        laborPercent = parseFloat(rawData.laborCostPercent) || 0
-      }
+      console.log('CSV raw data:', rawData)
+      console.log('Item quantities:', itemQuantities)
 
       // Calculate total food cost: cost_per_portion * quantity sold
       var totalFoodCost = 0
       costs.forEach(function(c) {
         var qtySold = itemQuantities[c.item_name] || 0
-        totalFoodCost += c.cost_per_portion * qtySold
+        var itemFoodCost = c.cost_per_portion * qtySold
+        console.log(c.item_name + ': ' + qtySold + ' sold x $' + c.cost_per_portion + ' = $' + itemFoodCost)
+        totalFoodCost += itemFoodCost
       })
 
-      console.log('Item quantities:', itemQuantities)
       console.log('Total food cost:', totalFoodCost)
       console.log('Total revenue:', totalRevenue)
 
