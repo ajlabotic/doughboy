@@ -622,9 +622,10 @@
     // ===== TIME-BASED GREETING =====
     function getGreeting() {
       var h = new Date().getHours();
-      if (h < 12) return 'Good morning';
-      if (h < 17) return 'Good afternoon';
-      return 'Good evening';
+      if (h >= 5 && h < 12) return 'Good morning';
+      if (h >= 12 && h < 17) return 'Good afternoon';
+      if (h >= 17 && h < 21) return 'Good evening';
+      return 'Working late';
     }
 
     // ===== AUTH GUARD + PROFILE LOAD =====
@@ -653,9 +654,10 @@
 
       // Populate UI
       var greeting = getGreeting();
+      var punctuation = greeting === 'Working late' ? '?' : '!';
       document.getElementById('dashGreeting').textContent = firstName
-        ? greeting + ', ' + firstName + '!'
-        : greeting + '!';
+        ? greeting + ', ' + firstName + punctuation
+        : greeting + punctuation;
 
       document.getElementById('dashSubline').textContent = restaurantName
         ? 'Here is how ' + restaurantName + ' is doing today.'
