@@ -765,21 +765,31 @@
 
         // Update metrics
         var metrics = data.metrics || {};
+        var dateRange = data.dateRange || '';
+
+        // Revenue
         document.getElementById('metricRevenue').textContent = typeof metrics.revenue === 'number'
           ? '$' + metrics.revenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-          : '$' + (metrics.revenue || '0');
-        document.getElementById('metricRevenueSub').textContent = 'From uploaded POS data';
+          : '$0';
+        document.getElementById('metricRevenueSub').textContent = dateRange && dateRange !== 'Unknown'
+          ? 'Week of ' + dateRange
+          : 'From uploaded POS data';
 
-        document.getElementById('metricFoodCost').textContent = metrics.foodCostPercent || 'N/A';
-        document.getElementById('metricFoodCostSub').textContent = typeof metrics.foodCostPercent === 'string' && metrics.foodCostPercent.includes('Upload')
-          ? metrics.foodCostPercent
-          : 'From AI analysis';
+        // Food cost %
+        document.getElementById('metricFoodCost').textContent = metrics.foodCostPercent || 'Data needed';
+        document.getElementById('metricFoodCostSub').textContent = 'Based on sale prices';
 
-        document.getElementById('metricLaborCost').textContent = metrics.laborCostPercent || 'N/A';
-        document.getElementById('metricLaborCostSub').textContent = 'Upload shift data to calculate';
+        // Labor cost %
+        document.getElementById('metricLaborCost').textContent = typeof metrics.laborCostPercent === 'number'
+          ? metrics.laborCostPercent + '%'
+          : 'Add shift data';
+        document.getElementById('metricLaborCostSub').textContent = 'Based on shift data';
 
-        document.getElementById('metricNetMargin').textContent = metrics.netMargin || 'N/A';
-        document.getElementById('metricNetMarginSub').textContent = 'Calculating...';
+        // Net margin
+        document.getElementById('metricNetMargin').textContent = typeof metrics.netMargin === 'number'
+          ? metrics.netMargin + '%'
+          : 'Upload more data';
+        document.getElementById('metricNetMarginSub').textContent = 'After labor costs';
 
         // Update insight
         if (data.dailyInsight) {

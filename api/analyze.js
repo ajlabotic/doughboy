@@ -90,20 +90,36 @@ module.exports = async function handler(req, res) {
     }
 
     // STEP 2 — Build analysis context
-    var revenueVariations = ['sale price', 'total', 'amount', 'revenue', 'gross sales', 'net sales', 'sales', 'price', 'total sales']
+    var qtyVariations = ['quantity', 'qty', 'count', 'units', 'items sold', 'qty sold']
+    var priceVariations = ['sale price', 'price', 'unit price', 'menu price', 'item price', 'selling price']
     var itemVariations = ['item', 'item name', 'product', 'menu item', 'description', 'item description', 'name']
     var dateVariations = ['date', 'order date', 'sale date', 'transaction date', 'day']
+    var hoursVariations = ['hours worked', 'hours', 'labor hours', 'shift hours', 'total hours']
+    var rateVariations = ['hourly rate', 'rate', 'pay rate', 'wage', 'hourly pay', 'hourly wage']
 
     var totalRevenue = 0
+    var totalLaborCost = 0
+    var hasLaborData = false
     var uniqueItemsSet = {}
     var dates = []
 
     for (var i = 0; i < parsedRows.length; i++) {
       var row = parsedRows[i]
 
-      var revVal = findColumn(row, revenueVariations)
-      var num = parseNum(revVal)
-      if (!isNaN(num)) totalRevenue += num
+      // Revenue = quantity * sale price per row
+      var qtyVal = parseNum(findColumn(row, qtyVariations))
+      var priceVal = parseNum(findColumn(row, priceVariations))
+      if (!isNaN(qtyVal) && !isNaN(priceVal)) {
+        totalRevenue += qtyVal * priceVal
+      }
+
+      // Labor = hours worked * hourly rate per row
+      var hoursVal = parseNum(findColumn(row, hoursVariations))
+      var rateVal = parseNum(findColumn(row, rateVariations))
+      if (!isNaN(hoursVal) && !isNaN(rateVal)) {
+        totalLaborCost += hoursVal * rateVal
+        hasLaborData = true
+      }
 
       var itemVal = findColumn(row, itemVariations)
       if (itemVal) uniqueItemsSet[itemVal] = true
@@ -117,6 +133,15 @@ module.exports = async function handler(req, res) {
 
     var uniqueItems = Object.keys(uniqueItemsSet)
     totalRevenue = Math.round(totalRevenue * 100) / 100
+    totalLaborCost = Math.round(totalLaborCost * 100) / 100
+
+    // Calculate labor cost % and net margin
+    var laborCostPercent = null
+    var netMargin = null
+    if (hasLaborData && totalRevenue > 0) {
+      laborCostPercent = Math.round((totalLaborCost / totalRevenue) * 100)
+      netMargin = Math.round(((totalRevenue - totalLaborCost) / totalRevenue) * 100)
+    }
 
     var dateRange = 'Unknown'
     if (dates.length > 0) {
@@ -198,21 +223,31 @@ module.exports = async function handler(req, res) {
         raw_data: {
           totalRows: parsedRows.length,
           totalRevenue: totalRevenue,
+          totalLaborCost: totalLaborCost,
+          laborCostPercent: laborCostPercent,
+          netMargin: netMargin,
           uniqueItems: uniqueItems,
           dateRange: dateRange
         },
         parsed_summary: parsed
       })
 
-    // STEP 6 — Return to frontend
+    // STEP 6 — Clean up food cost value (cap to short string)
+    var foodCostClean = parsed.foodCostPercent || null
+    if (typeof foodCostClean === 'string' && foodCostClean.length > 20) {
+      foodCostClean = null
+    }
+
+    // Return to frontend
     return res.status(200).json({
       success: true,
       metrics: {
         revenue: totalRevenue,
-        foodCostPercent: parsed.foodCostPercent || 'N/A',
-        laborCostPercent: 'Upload shift data to calculate',
-        netMargin: 'Calculating...'
+        foodCostPercent: foodCostClean,
+        laborCostPercent: laborCostPercent,
+        netMargin: netMargin
       },
+      dateRange: dateRange,
       dailyInsight: parsed.dailyInsight || '',
       topObservations: parsed.topObservations || [],
       immediateAction: parsed.immediateAction || ''

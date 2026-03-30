@@ -1,0 +1,44 @@
+date,item_name,quantity,sale_price,category,staff,shift,hours_worked,hourly_rate
+2026-03-01,Chicken Parm,12,18.00,Entree,Maria,Dinner,6,14.00
+2026-03-01,Fish Tacos,8,14.00,Entree,James,Dinner,8,16.00
+2026-03-01,House Salad,15,8.00,Starter,Maria,Dinner,6,14.00
+2026-03-01,Tiramisu,6,9.00,Dessert,James,Dinner,8,16.00
+2026-03-01,Margherita Pizza,10,16.00,Entree,Sofia,Lunch,5,14.00
+2026-03-01,Caesar Salad,11,10.00,Starter,Sofia,Lunch,5,14.00
+2026-03-02,Chicken Parm,9,18.00,Entree,Maria,Dinner,6,14.00
+2026-03-02,Fish Tacos,14,14.00,Entree,James,Dinner,8,16.00
+2026-03-02,Margherita Pizza,7,16.00,Entree,Sofia,Lunch,5,14.00
+2026-03-02,Tiramisu,9,9.00,Dessert,Maria,Dinner,6,14.00
+2026-03-02,House Salad,12,8.00,Starter,James,Dinner,8,16.00
+2026-03-02,Burger,18,15.00,Entree,Sofia,Lunch,5,14.00
+2026-03-03,Chicken Parm,15,18.00,Entree,Maria,Dinner,6,14.00
+2026-03-03,Fish Tacos,6,14.00,Entree,James,Dinner,8,16.00
+2026-03-03,Burger,22,15.00,Entree,Sofia,Lunch,5,14.00
+2026-03-03,Caesar Salad,9,10.00,Starter,Maria,Dinner,6,14.00
+2026-03-03,Tiramisu,11,9.00,Dessert,James,Dinner,8,16.00
+2026-03-03,Margherita Pizza,13,16.00,Entree,Sofia,Lunch,5,14.00
+2026-03-04,Chicken Parm,7,18.00,Entree,Maria,Dinner,6,14.00
+2026-03-04,Fish Tacos,11,14.00,Entree,James,Dinner,8,16.00
+2026-03-04,Burger,16,15.00,Entree,Sofia,Lunch,5,14.00
+2026-03-04,House Salad,14,8.00,Starter,Maria,Dinner,6,14.00
+2026-03-04,Tiramisu,8,9.00,Dessert,James,Dinner,8,16.00
+2026-03-04,Caesar Salad,10,10.00,Starter,Sofia,Lunch,5,14.00
+2026-03-05,Chicken Parm,19,18.00,Entree,Maria,Dinner,6,14.00
+2026-03-05,Fish Tacos,9,14.00,Entree,James,Dinner,8,16.00
+2026-03-05,Burger,24,15.00,Entree,Sofia,Lunch,5,14.00
+2026-03-05,Margherita Pizza,11,16.00,Entree,Sofia,Lunch,5,14.00
+2026-03-05,Tiramisu,13,9.00,Dessert,James,Dinner,8,16.00
+2026-03-05,House Salad,16,8.00,Starter,Maria,Dinner,6,14.00
+2026-03-06,Chicken Parm,11,18.00,Entree,Maria,Dinner,6,14.00
+2026-03-06,Fish Tacos,13,14.00,Entree,James,Dinner,8,16.00
+2026-03-06,Burger,19,15.00,Entree,Sofia,Lunch,5,14.00
+2026-03-06,Caesar Salad,8,10.00,Starter,Maria,Dinner,6,14.00
+2026-03-06,Tiramisu,7,9.00,Dessert,James,Dinner,8,16.00
+2026-03-06,Margherita Pizza,15,16.00,Entree,Sofia,Lunch,5,14.00
+2026-03-07,Chicken Parm,21,18.00,Entree,Maria,Dinner,7,14.00
+2026-03-07,Fish Tacos,17,14.00,Entree,James,Dinner,9,16.00
+2026-03-07,Burger,28,15.00,Entree,Sofia,Lunch,6,14.00
+2026-03-07,House Salad,20,8.00,Starter,Maria,Dinner,7,14.00
+2026-03-07,Tiramisu,15,9.00,Dessert,James,Dinner,9,16.00
+2026-03-07,Caesar Salad,14,10.00,Starter,Sofia,Lunch,6,14.00
+2026-03-07,Margherita Pizza,18,16.00,Entree,Sofia,Lunch,6,14.00
