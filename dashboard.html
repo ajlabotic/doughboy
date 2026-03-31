@@ -611,6 +611,14 @@
       <button id="edit-costs-btn" style="background:transparent;border:1.5px solid var(--rumba);color:var(--rumba);border-radius:100px;padding:0.5rem 1.2rem;font-family:DM Sans,sans-serif;font-size:0.8rem;font-weight:600;cursor:pointer;display:block;">Edit ingredient costs</button>
     </div>
 
+    <!-- MY SUPPLIERS -->
+    <section class="fade-section" style="background:var(--vanilla-light);border:1px solid rgba(54,48,49,0.06);border-radius:16px;padding:2rem;margin-bottom:32px;">
+      <h2 style="font-family:'Fraunces',serif;font-weight:700;font-size:1.15rem;color:var(--espresso);margin-bottom:6px;">My Suppliers</h2>
+      <p style="font-size:0.85rem;color:rgba(54,48,49,0.5);margin-bottom:16px;">Save your supplier logins so Doughboy can build carts for you. Your credentials are encrypted and never visible to anyone.</p>
+      <button id="add-supplier-btn" style="background:var(--rumba);color:var(--vanilla);border:none;border-radius:100px;padding:0.6rem 1.4rem;font-family:'DM Sans',sans-serif;font-size:0.85rem;font-weight:600;cursor:pointer;margin-bottom:16px;">Add Supplier</button>
+      <div id="supplier-list" style="margin-top:8px;"></div>
+    </section>
+
     <!-- CHAT AGENT -->
     <section class="chat-section fade-section">
       <h2>Ask Doughboy</h2>
@@ -1443,6 +1451,141 @@
     }
 
     document.getElementById('edit-overhead-btn').addEventListener('click', showOverheadForm);
+
+    // ===== MY SUPPLIERS =====
+    async function loadSupplierList() {
+      if (!currentUserId) {
+        var s = await supabase.auth.getSession();
+        if (s.data.session) currentUserId = s.data.session.user.id;
+      }
+      if (!currentUserId) return;
+
+      var listEl = document.getElementById('supplier-list');
+      listEl.innerHTML = '<p style="font-size:0.8rem;color:rgba(54,48,49,0.35);">Loading...</p>';
+
+      try {
+        var res = await fetch('/api/supplier-credentials', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ method: 'list', userId: currentUserId })
+        });
+        var data = await res.json();
+
+        if (data.success && data.suppliers && data.suppliers.length > 0) {
+          var html = '';
+          data.suppliers.forEach(function(s) {
+            html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:0.6rem 0;border-bottom:1px solid rgba(54,48,49,0.06);">' +
+              '<div>' +
+              '<span style="font-family:DM Sans,sans-serif;font-weight:600;font-size:0.9rem;color:var(--espresso);">' + s.supplier_name + '</span>' +
+              (s.website_url ? '<span style="font-size:0.75rem;color:rgba(54,48,49,0.35);margin-left:8px;">' + s.website_url + '</span>' : '') +
+              '</div>' +
+              '<a href="#" data-supplier="' + s.supplier_name.replace(/"/g, '&quot;') + '" class="remove-supplier-link" style="font-size:0.75rem;color:var(--rumba);text-decoration:none;font-weight:500;">Remove</a>' +
+              '</div>';
+          });
+          listEl.innerHTML = html;
+
+          listEl.querySelectorAll('.remove-supplier-link').forEach(function(link) {
+            link.addEventListener('click', async function(e) {
+              e.preventDefault();
+              var name = this.getAttribute('data-supplier');
+              if (!confirm('Remove ' + name + '?')) return;
+              await fetch('/api/supplier-credentials', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ method: 'delete', userId: currentUserId, supplierName: name })
+              });
+              loadSupplierList();
+            });
+          });
+        } else {
+          listEl.innerHTML = '<p style="font-size:0.85rem;color:rgba(54,48,49,0.4);font-style:italic;">No suppliers added yet. Add one to let Doughboy handle your ordering.</p>';
+        }
+      } catch(e) {
+        listEl.innerHTML = '<p style="font-size:0.85rem;color:rgba(54,48,49,0.4);">Could not load suppliers.</p>';
+      }
+    }
+
+    // Load supplier list on startup
+    loadSupplierList();
+
+    // Add Supplier button
+    document.getElementById('add-supplier-btn').addEventListener('click', function() {
+      var existing = document.getElementById('supplier-add-form');
+      if (existing) { existing.remove(); return; }
+
+      var formHTML = '<div id="supplier-add-form" style="background:white;border:1px solid rgba(54,48,49,0.1);border-radius:16px;padding:1.5rem;margin-bottom:16px;">' +
+        '<div style="display:flex;flex-direction:column;gap:12px;">' +
+        '<input type="text" id="supplier-name-input" placeholder="Sysco" style="border:1px solid rgba(54,48,49,0.15);border-radius:8px;padding:0.5rem 0.75rem;font-family:DM Sans,sans-serif;font-size:0.85rem;color:var(--espresso);background:white;">' +
+        '<input type="text" id="supplier-url-input" placeholder="https://shop.sysco.com" style="border:1px solid rgba(54,48,49,0.15);border-radius:8px;padding:0.5rem 0.75rem;font-family:DM Sans,sans-serif;font-size:0.85rem;color:var(--espresso);background:white;">' +
+        '<input type="text" id="supplier-user-input" placeholder="Username" style="border:1px solid rgba(54,48,49,0.15);border-radius:8px;padding:0.5rem 0.75rem;font-family:DM Sans,sans-serif;font-size:0.85rem;color:var(--espresso);background:white;">' +
+        '<input type="password" id="supplier-pass-input" placeholder="Password" style="border:1px solid rgba(54,48,49,0.15);border-radius:8px;padding:0.5rem 0.75rem;font-family:DM Sans,sans-serif;font-size:0.85rem;color:var(--espresso);background:white;">' +
+        '</div>' +
+        '<div style="display:flex;gap:0.75rem;margin-top:1rem;">' +
+        '<button id="save-supplier-btn" style="background:var(--rumba);color:var(--vanilla);border:none;border-radius:100px;padding:0.6rem 1.4rem;font-family:DM Sans,sans-serif;font-size:0.85rem;font-weight:600;cursor:pointer;">Save Supplier</button>' +
+        '<button id="cancel-supplier-btn" style="background:transparent;color:#4A4344;border:1.5px solid rgba(54,48,49,0.2);border-radius:100px;padding:0.6rem 1.4rem;font-family:DM Sans,sans-serif;font-size:0.85rem;cursor:pointer;">Cancel</button>' +
+        '</div>' +
+        '<p id="supplier-msg" style="font-size:0.8rem;color:var(--rumba);font-weight:500;margin-top:8px;opacity:0;transition:opacity 0.3s ease;"></p>' +
+        '</div>';
+
+      document.getElementById('add-supplier-btn').insertAdjacentHTML('afterend', formHTML);
+
+      document.getElementById('cancel-supplier-btn').addEventListener('click', function() {
+        document.getElementById('supplier-add-form').remove();
+      });
+
+      document.getElementById('save-supplier-btn').addEventListener('click', async function() {
+        var btn = this;
+        var name = document.getElementById('supplier-name-input').value.trim();
+        var url = document.getElementById('supplier-url-input').value.trim();
+        var user = document.getElementById('supplier-user-input').value.trim();
+        var pass = document.getElementById('supplier-pass-input').value;
+
+        if (!name || !user || !pass) {
+          var msg = document.getElementById('supplier-msg');
+          msg.textContent = 'Please fill in supplier name, username, and password.';
+          msg.style.opacity = '1';
+          return;
+        }
+
+        btn.textContent = 'Saving...';
+        btn.disabled = true;
+
+        try {
+          var res = await fetch('/api/supplier-credentials', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              method: 'save',
+              userId: currentUserId,
+              supplierName: name,
+              websiteUrl: url,
+              username: user,
+              password: pass
+            })
+          });
+          var data = await res.json();
+
+          if (data.success) {
+            var msg = document.getElementById('supplier-msg');
+            msg.textContent = 'Supplier saved securely';
+            msg.style.opacity = '1';
+            setTimeout(function() {
+              var form = document.getElementById('supplier-add-form');
+              if (form) form.remove();
+              loadSupplierList();
+            }, 1500);
+          } else {
+            throw new Error(data.error || 'Save failed');
+          }
+        } catch(e) {
+          btn.textContent = 'Save Supplier';
+          btn.disabled = false;
+          var msg = document.getElementById('supplier-msg');
+          msg.textContent = e.message || 'Something went wrong.';
+          msg.style.opacity = '1';
+        }
+      });
+    });
   </script>
 
 </body>
