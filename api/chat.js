@@ -1,4 +1,101 @@
 const { createClient } = require('@supabase/supabase-js')
+const fetch = require('node-fetch')
+
+function buildSystemPrompt(profile, csvData, ingredientCosts, overheadCosts) {
+  var prompt = 'You are Doughboy, an AI profit agent for independent restaurants. You have access to this restaurant\'s sales data, labor data, and food cost data. Always give specific dollar amounts. Never give generic advice. Speak like a knowledgeable friend, not a corporate consultant. If you see a margin problem, flag it immediately with the exact dollar impact. The restaurant owner is an expert at their craft. Your job is to handle the numbers so they can focus on the food and the guests.\n\n'
+
+  prompt += 'PERSONALITY RULES:\n'
+  prompt += '- Warm but direct, not a generic chatbot\n'
+  prompt += '- Always lead with specific dollar amounts when possible\n'
+  prompt += '- Keep answers concise, 2 to 4 sentences for simple questions, up to a short paragraph for complex analysis\n'
+  prompt += '- Use the owner\'s first name occasionally\n'
+  prompt += '- When you spot a problem, frame it as money they can recover, not a mistake they made\n'
+  prompt += '- If you cannot answer from the data provided, say so honestly and suggest what data would help\n'
+  prompt += '- Never make up numbers. If data is missing say "I would need your [specific data] to give you a real number on that."\n'
+  prompt += '- Do not use markdown formatting, bullet points, or headers. Write in plain conversational sentences like a text message\n'
+  prompt += '- When suggesting a price change, always include the estimated monthly impact\n'
+  prompt += '- Never use em dashes\n\n'
+
+  prompt += 'RESTAURANT CONTEXT:\n'
+  prompt += '- Owner: ' + (profile.first_name || 'Owner') + '\n'
+  prompt += '- Restaurant: ' + (profile.restaurant_name || 'Not specified') + '\n'
+  prompt += '- Plan: ' + (profile.plan_type || 'starter') + '\n\n'
+
+  if (csvData && csvData.raw_data) {
+    prompt += 'RESTAURANT DATA:\n'
+    var rawStr = JSON.stringify(csvData.raw_data)
+    if (rawStr.length > 3000) {
+      prompt += 'Summary: ' + JSON.stringify(csvData.parsed_summary) + '\n\n'
+    } else {
+      prompt += 'Raw data: ' + rawStr + '\n'
+      prompt += 'Analysis: ' + JSON.stringify(csvData.parsed_summary) + '\n\n'
+    }
+  } else {
+    prompt += 'RESTAURANT DATA:\nNo POS data uploaded yet. Answer general restaurant profitability questions and encourage the owner to upload their POS CSV for specific insights.\n\n'
+  }
+
+  if (ingredientCosts && ingredientCosts.length > 0) {
+    prompt += 'INGREDIENT COSTS (per portion):\n'
+    ingredientCosts.forEach(function(c) {
+      prompt += '- ' + c.item_name + ': $' + c.cost_per_portion + '\n'
+    })
+    prompt += '\n'
+  } else {
+    prompt += 'INGREDIENT COSTS:\nNo ingredient costs entered yet. Suggest the owner use the Edit ingredient costs button on their dashboard.\n\n'
+  }
+
+  if (overheadCosts) {
+    var ohItems = []
+    if (overheadCosts.monthly_rent > 0) ohItems.push('Rent: $' + overheadCosts.monthly_rent + '/mo')
+    if (overheadCosts.monthly_utilities > 0) ohItems.push('Utilities: $' + overheadCosts.monthly_utilities + '/mo')
+    if (overheadCosts.monthly_insurance > 0) ohItems.push('Insurance: $' + overheadCosts.monthly_insurance + '/mo')
+    if (overheadCosts.monthly_supplies > 0) ohItems.push('Supplies: $' + overheadCosts.monthly_supplies + '/mo')
+    if (overheadCosts.monthly_other > 0) ohItems.push('Other: $' + overheadCosts.monthly_other + '/mo')
+    if (ohItems.length > 0) {
+      prompt += 'MONTHLY OVERHEAD:\n' + ohItems.join('\n') + '\n\n'
+    } else {
+      prompt += 'MONTHLY OVERHEAD:\nNo overhead costs entered yet.\n\n'
+    }
+  } else {
+    prompt += 'MONTHLY OVERHEAD:\nNo overhead costs entered yet.\n\n'
+  }
+
+  prompt += 'INDUSTRY BENCHMARKS:\n'
+  prompt += '- Target food cost: 28 to 32% of revenue\n'
+  prompt += '- Target labor cost: 25 to 30% of revenue\n'
+  prompt += '- Target prime cost (food + labor): 55 to 60% of revenue\n'
+  prompt += '- Target net profit margin: 5 to 10%, above 10% is excellent\n'
+  prompt += '- Average independent restaurant loses $2,000 to $4,000/mo in hidden margin waste\n'
+  prompt += '- Flag any menu item with food cost above 32%\n'
+  prompt += '- Flag any shift where labor cost exceeds 35% of that shift revenue\n'
+
+  return prompt
+}
+
+function classifyQuestion(message) {
+  var lower = message.toLowerCase()
+  var complexPatterns = [
+    'what if', 'what would happen', 'should i', 'compare', 'analyze',
+    'why is', 'why are', 'how can i improve', 'how do i fix', 'strategy',
+    'recommend', 'suggestion', 'forecast', 'predict', 'break down',
+    'breakdown', 'explain why', 'optimize', 'reduce', 'increase margin',
+    'menu pricing', 'reprice', 'staffing', 'trend', 'over time',
+    'benchmark', 'losing money', 'save money', 'cut costs', 'which dish',
+    'which item', 'best seller', 'worst performer', 'overstaffed', 'understaffed'
+  ]
+
+  for (var i = 0; i < complexPatterns.length; i++) {
+    if (lower.indexOf(complexPatterns[i]) !== -1) {
+      return 'anthropic/claude-sonnet-4-6'
+    }
+  }
+
+  if (message.length > 80) {
+    return 'anthropic/claude-sonnet-4-6'
+  }
+
+  return 'anthropic/claude-haiku-4-5'
+}
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -10,25 +107,30 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  const { userId, message } = req.body || {}
+  var body = req.body || {}
+  var userId = body.userId
+  var message = body.message
+  var history = body.history || []
 
   if (!userId || !message) {
     return res.status(400).json({ error: 'Missing userId or message' })
   }
 
-  const supabase = createClient(
+  var supabase = createClient(
     process.env.SUPABASE_URL,
     process.env.SUPABASE_SERVICE_KEY
   )
 
   // Fetch user profile
-  const { data: profile, error: profileError } = await supabase
+  var profileResult = await supabase
     .from('profiles')
-    .select('chat_questions_used, chat_questions_limit, first_name, restaurant_name')
+    .select('chat_questions_used, chat_questions_limit, first_name, restaurant_name, plan_type')
     .eq('id', userId)
     .single()
 
-  if (profileError || !profile) {
+  var profile = profileResult.data
+
+  if (profileResult.error || !profile) {
     return res.status(404).json({ error: 'Profile not found' })
   }
 
@@ -42,55 +144,85 @@ module.exports = async function handler(req, res) {
     })
   }
 
-  // Fetch latest CSV data for context
-  const { data: csvData } = await supabase
+  // Gather all user context
+  var csvResult = await supabase
     .from('csv_data')
-    .select('raw_data, parsed_summary')
+    .select('raw_data, parsed_summary, upload_date')
     .eq('user_id', userId)
     .order('upload_date', { ascending: false })
     .limit(1)
     .single()
 
-  let reply
+  var ingredientResult = await supabase
+    .from('ingredient_costs')
+    .select('item_name, cost_per_portion')
+    .eq('user_id', userId)
 
-  if (csvData) {
-    // Call OpenRouter with restaurant data context
-    try {
-      const aiResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Bearer ' + process.env.OPENROUTER_API_KEY,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://doughboy.vercel.app',
-          'X-Title': 'Doughboy'
-        },
-        body: JSON.stringify({
-          model: 'anthropic/claude-haiku-4-5',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are Doughboy, an AI profit agent for independent restaurants. You have access to this restaurant\'s sales data. Always give specific dollar amounts. Never give generic advice. Speak like a knowledgeable friend, not a corporate consultant. The restaurant owner is an expert at their craft — your job is to handle the numbers.'
-            },
-            {
-              role: 'user',
-              content: 'Restaurant: ' + (profile.restaurant_name || 'Unknown') + '\n' +
-                'Latest data summary: ' + JSON.stringify(csvData.raw_data) + '\n' +
-                'AI analysis: ' + JSON.stringify(csvData.parsed_summary) + '\n\n' +
-                'Owner\'s question: ' + message
-            }
-          ],
-          max_tokens: 400
-        })
+  var overheadResult = await supabase
+    .from('overhead_costs')
+    .select('monthly_rent, monthly_utilities, monthly_insurance, monthly_supplies, monthly_other')
+    .eq('user_id', userId)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .single()
+
+  var csvData = csvResult.data || null
+  var ingredientCosts = ingredientResult.data || []
+  var overheadCosts = overheadResult.data || null
+
+  // Build system prompt
+  var systemPrompt = buildSystemPrompt(profile, csvData, ingredientCosts, overheadCosts)
+
+  // Classify question to pick the right model
+  var model = classifyQuestion(message)
+
+  // Build messages array: system, history, new message
+  var messages = [{ role: 'system', content: systemPrompt }]
+
+  if (history && history.length > 0) {
+    history.forEach(function(msg) {
+      if (msg.role && msg.content) {
+        messages.push({ role: msg.role, content: msg.content })
+      }
+    })
+  }
+
+  messages.push({ role: 'user', content: message })
+
+  // Call OpenRouter
+  var reply
+
+  try {
+    var aiResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + process.env.OPENROUTER_API_KEY,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://doughboy.ai',
+        'X-Title': 'Doughboy'
+      },
+      body: JSON.stringify({
+        model: model,
+        messages: messages,
+        max_tokens: 500,
+        temperature: 0.7
       })
+    })
 
-      const aiData = await aiResponse.json()
-      reply = (aiData.choices && aiData.choices[0] && aiData.choices[0].message && aiData.choices[0].message.content)
-        || 'I had trouble processing that. Could you try rephrasing your question?'
-    } catch (err) {
-      reply = 'I had trouble connecting right now. Please try again in a moment.'
+    var aiData = await aiResponse.json()
+
+    if (aiData.error) {
+      console.error('OpenRouter error:', aiData.error)
+      reply = 'I\'m having trouble connecting right now. Try again in a moment.'
+    } else {
+      reply = (aiData.choices && aiData.choices[0] && aiData.choices[0].message && aiData.choices[0].message.content) || null
+      if (!reply) {
+        reply = 'I couldn\'t generate a response. Try rephrasing your question.'
+      }
     }
-  } else {
-    reply = 'Upload your POS CSV first and I will have real insights for you.'
+  } catch (err) {
+    console.error('OpenRouter fetch error:', err)
+    reply = 'Something went wrong on my end. Try again in a moment.'
   }
 
   // Increment usage counter
@@ -102,7 +234,7 @@ module.exports = async function handler(req, res) {
     .eq('id', userId)
 
   return res.status(200).json({
-    reply,
+    reply: reply,
     limitReached: false,
     used: profile.chat_questions_used + 1,
     limit: profile.chat_questions_limit

@@ -456,6 +456,17 @@
       color: rgba(244, 225, 193, 0.25);
     }
 
+    /* ========== TYPING INDICATOR ========== */
+    .msg-thinking {
+      opacity: 0.6;
+      animation: thinkPulse 1.2s ease-in-out infinite;
+    }
+
+    @keyframes thinkPulse {
+      0%, 100% { opacity: 0.4; }
+      50% { opacity: 0.8; }
+    }
+
     /* ========== RESPONSIVE ========== */
     @media (max-width: 768px) {
       .metrics-grid {
@@ -1005,6 +1016,7 @@
     var chatSendBtn = document.getElementById('chatSendBtn');
     var chatUsage = document.getElementById('chatUsage');
     var currentUserId = null;
+    var conversationHistory = [];
 
     supabase.auth.getSession().then(function(r) {
       if (r.data.session) currentUserId = r.data.session.user.id;
@@ -1032,30 +1044,53 @@
       if (!text || !currentUserId) return;
       if (chatInput.disabled) return;
 
+      // Show user message
       var userMsg = document.createElement('div');
       userMsg.className = 'chat-msg user';
       userMsg.textContent = text;
       chatMessages.appendChild(userMsg);
       chatMessages.scrollTop = chatMessages.scrollHeight;
 
+      // Track in history
+      conversationHistory.push({ role: 'user', content: text });
+
       chatInput.value = '';
       chatInput.disabled = true;
       chatSendBtn.disabled = true;
+
+      // Show thinking indicator
+      var thinkingMsg = document.createElement('div');
+      thinkingMsg.className = 'chat-msg bot msg-thinking';
+      thinkingMsg.textContent = 'Thinking...';
+      chatMessages.appendChild(thinkingMsg);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
 
       try {
         var res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: currentUserId, message: text })
+          body: JSON.stringify({
+            userId: currentUserId,
+            message: text,
+            history: conversationHistory.slice(-6)
+          })
         });
 
         var data = await res.json();
 
+        // Remove thinking indicator
+        if (thinkingMsg.parentNode) thinkingMsg.remove();
+
+        var replyText = data.reply || 'Something went wrong. Try again.';
+
         var botMsg = document.createElement('div');
         botMsg.className = 'chat-msg bot';
-        botMsg.textContent = data.reply || 'Something went wrong. Try again.';
+        botMsg.textContent = replyText;
         chatMessages.appendChild(botMsg);
         chatMessages.scrollTop = chatMessages.scrollHeight;
+
+        // Track in history
+        conversationHistory.push({ role: 'assistant', content: replyText });
 
         if (typeof data.used === 'number' && typeof data.limit === 'number') {
           updateUsageDisplay(data.used, data.limit);
@@ -1063,6 +1098,9 @@
 
         if (data.limitReached) return;
       } catch (err) {
+        // Remove thinking indicator
+        if (thinkingMsg.parentNode) thinkingMsg.remove();
+
         var errMsg = document.createElement('div');
         errMsg.className = 'chat-msg bot';
         errMsg.textContent = 'Connection issue. Please try again in a moment.';
