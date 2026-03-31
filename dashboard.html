@@ -131,7 +131,7 @@
     /* ========== METRICS ROW ========== */
     .metrics-grid {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(3, 1fr);
       gap: 20px;
       margin-bottom: 32px;
     }
@@ -486,6 +486,7 @@
       }
 
       .metrics-grid {
+        grid-template-columns: 1fr;
         gap: 12px;
       }
 
@@ -554,6 +555,16 @@
         <p class="metric-value" id="metricNetMargin">0%</p>
         <p class="metric-sub" id="metricNetMarginSub">Upload your POS data to see real numbers</p>
       </div>
+      <div class="metric-card">
+        <p class="metric-label">Operating Margin</p>
+        <p class="metric-value" id="operating-margin-value">0%</p>
+        <p class="metric-sub" id="operating-margin-sub">After food and labor costs</p>
+      </div>
+      <div class="metric-card">
+        <p class="metric-label">True Net Margin</p>
+        <p class="metric-value" id="true-net-margin-value" style="color:var(--rumba);">0%</p>
+        <p class="metric-sub" id="true-net-margin-sub">After all fixed costs</p>
+      </div>
     </section>
 
     <p id="foodCostHint" style="display:none;font-size:0.85rem;color:var(--rumba);margin-bottom:24px;font-weight:500;"></p>
@@ -584,7 +595,10 @@
       <a href="#" id="clearDataLink" style="display:none;font-size:0.8rem;color:#4A4344;margin-top:10px;text-decoration:underline;text-underline-offset:2px;">Clear data and upload new CSV</a>
     </section>
 
-    <button id="edit-costs-btn" style="background:transparent;border:1.5px solid var(--rumba);color:var(--rumba);border-radius:100px;padding:0.5rem 1.2rem;font-family:DM Sans,sans-serif;font-size:0.8rem;font-weight:600;cursor:pointer;margin-top:0.75rem;margin-bottom:1.5rem;display:block;">Edit ingredient costs</button>
+    <div style="display:flex;gap:0.75rem;margin-top:0.75rem;margin-bottom:1.5rem;flex-wrap:wrap;">
+      <button id="edit-overhead-btn" style="background:transparent;border:1.5px solid var(--rumba);color:var(--rumba);border-radius:100px;padding:0.5rem 1.2rem;font-family:DM Sans,sans-serif;font-size:0.8rem;font-weight:600;cursor:pointer;display:block;">Edit overhead costs</button>
+      <button id="edit-costs-btn" style="background:transparent;border:1.5px solid var(--rumba);color:var(--rumba);border-radius:100px;padding:0.5rem 1.2rem;font-family:DM Sans,sans-serif;font-size:0.8rem;font-weight:600;cursor:pointer;display:block;">Edit ingredient costs</button>
+    </div>
 
     <!-- CHAT AGENT -->
     <section class="chat-section fade-section">
@@ -734,6 +748,7 @@
 
     window.restaurantData = null;
     window.savedIngredientCosts = {};
+    window.savedOverhead = null;
 
     // ===== SHARED DISPLAY FUNCTIONS =====
     function updateMetricCards(metrics) {
@@ -797,9 +812,44 @@
       }
     }
 
-    // ===== LOAD SAVED INGREDIENT COSTS ON STARTUP =====
+    function calculateTrueNetMargin() {
+      var saved = JSON.parse(localStorage.getItem('doughboy_metrics') || '{}');
+      var totalRevenue = parseFloat(String(saved.revenue || '0').replace(/[^0-9.]/g, ''));
+
+      if (!totalRevenue || !window.savedOverhead) {
+        document.getElementById('operating-margin-value').textContent = 'Add overhead to compare';
+        document.getElementById('true-net-margin-value').textContent = 'Add overhead costs below';
+        return;
+      }
+
+      var totalMonthly =
+        (window.savedOverhead.monthly_rent || 0) +
+        (window.savedOverhead.monthly_utilities || 0) +
+        (window.savedOverhead.monthly_insurance || 0) +
+        (window.savedOverhead.monthly_supplies || 0) +
+        (window.savedOverhead.monthly_other || 0);
+
+      var weeklyOverhead = totalMonthly / 4.33;
+      var overheadPercent = (weeklyOverhead / totalRevenue) * 100;
+
+      var foodCost = parseFloat(String(saved.foodCostPercent || '0').replace(/[^0-9.]/g, '')) || 0;
+      var laborCost = parseFloat(String(saved.laborCostPercent || '0').replace(/[^0-9.]/g, '')) || 0;
+
+      var operatingMargin = 100 - foodCost - laborCost;
+      var trueNetMargin = operatingMargin - overheadPercent;
+
+      document.getElementById('operating-margin-value').textContent = operatingMargin.toFixed(1) + '%';
+      document.getElementById('true-net-margin-value').textContent = trueNetMargin.toFixed(1) + '%';
+
+      saved.operatingMargin = operatingMargin.toFixed(1) + '%';
+      saved.trueNetMargin = trueNetMargin.toFixed(1) + '%';
+      localStorage.setItem('doughboy_metrics', JSON.stringify(saved));
+    }
+
+    // ===== LOAD SAVED INGREDIENT COSTS + OVERHEAD ON STARTUP =====
     supabase.auth.getSession().then(async function(r) {
       if (!r.data.session) return;
+
       var costsResult = await supabase
         .from('ingredient_costs')
         .select('item_name, cost_per_portion')
@@ -809,6 +859,17 @@
           window.savedIngredientCosts[c.item_name] = c.cost_per_portion;
         });
       }
+
+      var overheadResult = await supabase
+        .from('overhead_costs')
+        .select('*')
+        .eq('user_id', r.data.session.user.id)
+        .single();
+      if (overheadResult.data) {
+        window.savedOverhead = overheadResult.data;
+      }
+
+      calculateTrueNetMargin();
     });
 
     // ===== LOAD CACHED METRICS ON PAGE LOAD =====
@@ -835,6 +896,13 @@
             showFoodCostHint(false);
           } else {
             showFoodCostHint(true);
+          }
+          // Restore operating + true net margin
+          if (metrics.operatingMargin) {
+            document.getElementById('operating-margin-value').textContent = metrics.operatingMargin;
+          }
+          if (metrics.trueNetMargin) {
+            document.getElementById('true-net-margin-value').textContent = metrics.trueNetMargin;
           }
         } catch(e) {
           localStorage.removeItem('doughboy_metrics');
@@ -917,6 +985,8 @@
 
         document.getElementById('chatWelcome').textContent = 'Your data is loaded! I can see your sales, menu items, and revenue. Ask me anything about your numbers.';
         document.getElementById('clearDataLink').style.display = 'inline-block';
+
+        calculateTrueNetMargin();
 
         btn.textContent = 'Uploaded';
         btn.style.opacity = '0.6';
@@ -1178,6 +1248,7 @@
           localStorage.setItem('doughboy_metrics', JSON.stringify(savedMetrics));
           updateMetricCards(savedMetrics);
           showFoodCostHint(true);
+          calculateTrueNetMargin();
 
           btn.textContent = 'Saved!';
           btn.style.background = '#2a7a4a';
@@ -1198,6 +1269,142 @@
         alert('Something went wrong: ' + e.message);
       }
     }
+
+    // ===== OVERHEAD COST FORM =====
+    async function showOverheadForm() {
+      var editBtn = document.getElementById('edit-overhead-btn');
+
+      var existing = document.getElementById('overhead-cost-form');
+      if (existing) {
+        existing.remove();
+        editBtn.textContent = 'Edit overhead costs';
+        return;
+      }
+
+      editBtn.textContent = 'Loading...';
+      editBtn.disabled = true;
+
+      var sessionResult = await supabase.auth.getSession();
+      if (!sessionResult.data || !sessionResult.data.session) return;
+
+      var overheadResult = await supabase
+        .from('overhead_costs')
+        .select('*')
+        .eq('user_id', sessionResult.data.session.user.id)
+        .single();
+
+      var oh = overheadResult.data || {};
+
+      editBtn.textContent = 'Close overhead costs';
+      editBtn.disabled = false;
+
+      var fields = [
+        { key: 'rent', label: 'Monthly Rent', val: oh.monthly_rent || '' },
+        { key: 'utilities', label: 'Utilities (avg/mo)', val: oh.monthly_utilities || '' },
+        { key: 'insurance', label: 'Insurance (avg/mo)', val: oh.monthly_insurance || '' },
+        { key: 'supplies', label: 'Supplies & Smallwares (avg/mo)', val: oh.monthly_supplies || '' },
+        { key: 'other', label: 'Other Fixed Costs (avg/mo)', val: oh.monthly_other || '' }
+      ];
+
+      var formHTML = '<div id="overhead-cost-form" style="background:var(--vanilla-light);border-radius:16px;padding:2rem;margin-top:1rem;margin-bottom:1rem;border:1px solid rgba(54,48,49,0.1);">' +
+        '<h3 style="font-family:Fraunces,serif;font-size:1.3rem;font-weight:700;color:var(--espresso);margin-bottom:0.5rem;">Monthly Overhead</h3>' +
+        '<p style="font-size:0.85rem;color:#4A4344;margin-bottom:1.5rem;">Enter your fixed monthly costs once. Doughboy uses these to calculate your true net margin.</p>';
+
+      fields.forEach(function(f) {
+        formHTML += '<div style="display:flex;align-items:center;justify-content:space-between;padding:0.75rem 0;border-bottom:1px solid rgba(54,48,49,0.06);">' +
+          '<span style="font-family:DM Sans,sans-serif;font-weight:600;font-size:0.9rem;color:var(--espresso);">' + f.label + '</span>' +
+          '<div style="display:flex;align-items:center;gap:0.5rem;">' +
+          '<span style="font-size:0.85rem;color:#4A4344;">$</span>' +
+          '<input type="number" step="0.01" min="0" value="' + f.val + '" placeholder="0.00" data-overhead="' + f.key + '" class="overhead-input" style="width:100px;border:1px solid rgba(54,48,49,0.15);border-radius:8px;padding:0.4rem 0.6rem;font-family:DM Sans,sans-serif;font-size:0.85rem;color:var(--espresso);background:white;text-align:right;">' +
+          '</div></div>';
+      });
+
+      formHTML += '<p id="overhead-total" style="font-family:Fraunces,serif;font-weight:700;font-size:1rem;color:var(--espresso);margin-top:1rem;padding-top:0.75rem;border-top:2px solid rgba(54,48,49,0.1);">Total monthly overhead: $0</p>';
+
+      formHTML += '<div style="display:flex;gap:1rem;margin-top:1.5rem;align-items:center;">' +
+        '<button id="save-overhead-costs" style="background:var(--rumba);color:var(--vanilla);border:none;border-radius:100px;padding:0.8rem 2rem;font-family:DM Sans,sans-serif;font-size:0.9rem;font-weight:600;cursor:pointer;flex:1;">Save Overhead</button>' +
+        '<button id="cancel-overhead-costs" style="background:transparent;color:#4A4344;border:1.5px solid rgba(54,48,49,0.2);border-radius:100px;padding:0.8rem 1.5rem;font-family:DM Sans,sans-serif;font-size:0.9rem;cursor:pointer;">Cancel</button>' +
+        '</div></div>';
+
+      editBtn.insertAdjacentHTML('afterend', formHTML);
+
+      // Live total calculation
+      function updateOverheadTotal() {
+        var total = 0;
+        document.querySelectorAll('.overhead-input').forEach(function(input) {
+          total += parseFloat(input.value) || 0;
+        });
+        document.getElementById('overhead-total').textContent = 'Total monthly overhead: $' + total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      }
+
+      document.querySelectorAll('.overhead-input').forEach(function(input) {
+        input.addEventListener('input', updateOverheadTotal);
+      });
+      updateOverheadTotal();
+
+      // Save handler
+      document.getElementById('save-overhead-costs').addEventListener('click', async function() {
+        var btn = this;
+        btn.textContent = 'Saving...';
+        btn.disabled = true;
+
+        var overhead = {};
+        document.querySelectorAll('.overhead-input').forEach(function(input) {
+          overhead[input.dataset.overhead] = parseFloat(input.value) || 0;
+        });
+
+        var sessionR = await supabase.auth.getSession();
+
+        try {
+          var response = await fetch('/api/overhead-costs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: sessionR.data.session.user.id,
+              overhead: overhead
+            })
+          });
+
+          var result = await response.json();
+
+          if (result.success) {
+            window.savedOverhead = {
+              monthly_rent: overhead.rent || 0,
+              monthly_utilities: overhead.utilities || 0,
+              monthly_insurance: overhead.insurance || 0,
+              monthly_supplies: overhead.supplies || 0,
+              monthly_other: overhead.other || 0
+            };
+
+            calculateTrueNetMargin();
+
+            btn.textContent = 'Overhead saved!';
+            btn.style.background = '#2a7a4a';
+
+            setTimeout(function() {
+              var form = document.getElementById('overhead-cost-form');
+              if (form) form.remove();
+              document.getElementById('edit-overhead-btn').textContent = 'Edit overhead costs';
+            }, 2000);
+          } else {
+            throw new Error(result.error || 'Save failed');
+          }
+        } catch(e) {
+          console.error('Overhead save error:', e);
+          btn.textContent = 'Save Overhead';
+          btn.disabled = false;
+          alert('Something went wrong: ' + e.message);
+        }
+      });
+
+      // Cancel handler
+      document.getElementById('cancel-overhead-costs').addEventListener('click', function() {
+        document.getElementById('overhead-cost-form').remove();
+        editBtn.textContent = 'Edit overhead costs';
+      });
+    }
+
+    document.getElementById('edit-overhead-btn').addEventListener('click', showOverheadForm);
   </script>
 
 </body>
