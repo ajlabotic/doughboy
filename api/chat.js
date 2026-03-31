@@ -34,12 +34,15 @@ function buildSystemPrompt(profile, csvData, ingredientCosts, overheadCosts) {
     prompt += 'RESTAURANT DATA:\nNo POS data uploaded yet. Answer general restaurant profitability questions and encourage the owner to upload their POS CSV for specific insights.\n\n'
   }
 
+  var totalIngredientCost = 0
   if (ingredientCosts && ingredientCosts.length > 0) {
     prompt += 'INGREDIENT COSTS (per portion):\n'
     ingredientCosts.forEach(function(c) {
       prompt += '- ' + c.item_name + ': $' + c.cost_per_portion + '\n'
+      totalIngredientCost += parseFloat(c.cost_per_portion) || 0
     })
-    prompt += '\n'
+    prompt += 'Total ingredient cost across all items: $' + totalIngredientCost.toFixed(2) + '\n'
+    prompt += 'Average cost per item: $' + (totalIngredientCost / ingredientCosts.length).toFixed(2) + '\n\n'
   } else {
     prompt += 'INGREDIENT COSTS:\nNo ingredient costs entered yet. Suggest the owner use the Edit ingredient costs button on their dashboard.\n\n'
   }
@@ -67,7 +70,48 @@ function buildSystemPrompt(profile, csvData, ingredientCosts, overheadCosts) {
   prompt += '- Target net profit margin: 5 to 10%, above 10% is excellent\n'
   prompt += '- Average independent restaurant loses $2,000 to $4,000/mo in hidden margin waste\n'
   prompt += '- Flag any menu item with food cost above 32%\n'
-  prompt += '- Flag any shift where labor cost exceeds 35% of that shift revenue\n'
+  prompt += '- Flag any shift where labor cost exceeds 35% of that shift revenue\n\n'
+
+  // Add calculated metrics section so AI uses dashboard numbers
+  if (csvData && csvData.raw_data) {
+    var revenue = parseFloat(csvData.raw_data.totalRevenue) || 0
+    var laborPct = parseFloat(csvData.raw_data.laborCostPercent) || 0
+    var foodPct = 0
+
+    if (ingredientCosts && ingredientCosts.length > 0 && csvData.raw_data.itemQuantities && revenue > 0) {
+      var totalFoodCost = 0
+      ingredientCosts.forEach(function(c) {
+        var qty = csvData.raw_data.itemQuantities[c.item_name] || 0
+        totalFoodCost += (parseFloat(c.cost_per_portion) || 0) * qty
+      })
+      foodPct = parseFloat(((totalFoodCost / revenue) * 100).toFixed(1))
+    }
+
+    var netMargin = (100 - foodPct - laborPct).toFixed(1)
+    var trueNetMargin = netMargin
+
+    if (overheadCosts) {
+      var totalMonthly = (parseFloat(overheadCosts.monthly_rent) || 0) +
+        (parseFloat(overheadCosts.monthly_utilities) || 0) +
+        (parseFloat(overheadCosts.monthly_insurance) || 0) +
+        (parseFloat(overheadCosts.monthly_supplies) || 0) +
+        (parseFloat(overheadCosts.monthly_other) || 0)
+      if (revenue > 0) {
+        var weeklyOverhead = totalMonthly / 4.33
+        var overheadPct = (weeklyOverhead / revenue) * 100
+        trueNetMargin = (parseFloat(netMargin) - overheadPct).toFixed(1)
+      }
+    }
+
+    prompt += 'IMPORTANT CALCULATED METRICS FROM DASHBOARD:\n'
+    prompt += 'These numbers are already calculated and displayed to the owner. Use these exact numbers when discussing margins, do not recalculate them yourself.\n'
+    prompt += '- Total revenue: $' + revenue.toFixed(2) + '\n'
+    if (foodPct > 0) prompt += '- Food cost %: ' + foodPct + '% (calculated from ingredient costs divided by revenue)\n'
+    if (laborPct > 0) prompt += '- Labor cost %: ' + laborPct + '% (calculated from shift hours and hourly rates divided by revenue)\n'
+    prompt += '- Operating margin (after food + labor): ' + netMargin + '%\n'
+    if (overheadCosts) prompt += '- True net margin (after food + labor + overhead): ' + trueNetMargin + '%\n'
+    prompt += 'Always reference these dashboard numbers when the owner asks about margins or how they are doing. Do not make up different numbers.\n'
+  }
 
   return prompt
 }
@@ -151,7 +195,7 @@ module.exports = async function handler(req, res) {
     .eq('user_id', userId)
     .order('upload_date', { ascending: false })
     .limit(1)
-    .single()
+    .maybeSingle()
 
   var ingredientResult = await supabase
     .from('ingredient_costs')
@@ -164,11 +208,17 @@ module.exports = async function handler(req, res) {
     .eq('user_id', userId)
     .order('updated_at', { ascending: false })
     .limit(1)
-    .single()
+    .maybeSingle()
 
   var csvData = csvResult.data || null
   var ingredientCosts = ingredientResult.data || []
   var overheadCosts = overheadResult.data || null
+
+  console.log('CSV data found:', csvData ? 'yes' : 'no')
+  console.log('Ingredient costs found:', ingredientCosts ? ingredientCosts.length + ' items' : 'none')
+  console.log('Overhead costs found:', overheadCosts ? 'yes' : 'no')
+  if (overheadCosts) console.log('Overhead data:', JSON.stringify(overheadCosts))
+  if (ingredientCosts && ingredientCosts.length > 0) console.log('Ingredient data:', JSON.stringify(ingredientCosts))
 
   // Build system prompt
   var systemPrompt = buildSystemPrompt(profile, csvData, ingredientCosts, overheadCosts)
