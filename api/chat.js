@@ -1,11 +1,9 @@
 const { createClient } = require('@supabase/supabase-js')
 const fetch = require('node-fetch')
 
-// Detect ordering intent and extract supplier + item info
 function detectOrderIntent(message) {
   var lower = message.toLowerCase()
 
-  // Patterns that indicate ordering intent
   var orderPatterns = [
     /(?:order|buy|purchase|get|add)\s+(\d+\s*(?:lbs?|pounds?|cases?|bags?|boxes?|units?|gallons?|oz|each|ct)?\s+)?(.+?)\s+(?:from|on|at|through)\s+(.+)/i,
     /(?:i need to order|i need to reorder|reorder|can you order)\s+(.+?)\s+(?:from|on|at|through)\s+(.+)/i,
@@ -46,8 +44,8 @@ function detectOrderIntent(message) {
   if (hasOrderWord && hasFromWord) {
     var fromMatch = lower.match(/(?:from|on|at|through)\s+([a-z0-9\s]+?)(?:\s*$|[.!?])/)
     var supplierName = fromMatch ? fromMatch[1].trim() : null
-    var itemMatch2 = lower.match(/(?:order|reorder|buy|purchase)\s+(.+?)(?:\s+from|\s+on|\s+at|\s+through)/i)
-    var item = itemMatch2 ? itemMatch2[1].trim() : ''
+    var itemMatch = lower.match(/(?:order|reorder|buy|purchase)\s+(.+?)(?:\s+from|\s+on|\s+at|\s+through)/i)
+    var item = itemMatch ? itemMatch[1].trim() : ''
 
     if (supplierName) {
       return {
