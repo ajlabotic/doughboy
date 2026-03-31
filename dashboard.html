@@ -467,6 +467,14 @@
       50% { opacity: 0.8; }
     }
 
+    /* ========== ORDER STATUS ========== */
+    .chat-msg.order-status {
+      background: rgba(124, 36, 57, 0.08);
+      color: var(--espresso);
+      font-style: italic;
+      font-size: 0.85rem;
+    }
+
     /* ========== RESPONSIVE ========== */
     @media (max-width: 768px) {
       .metrics-grid {
@@ -1047,6 +1055,39 @@
       }
     }
 
+    // Helper to show an order status message in chat
+    function showOrderStatus(text) {
+      var statusMsg = document.createElement('div');
+      statusMsg.className = 'chat-msg bot order-status msg-thinking';
+      statusMsg.textContent = text;
+      statusMsg.id = 'order-status-msg';
+      // Remove any existing status message
+      var existing = document.getElementById('order-status-msg');
+      if (existing) existing.remove();
+      chatMessages.appendChild(statusMsg);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+      return statusMsg;
+    }
+
+    // Check if a message looks like an ordering request (client-side preview)
+    function looksLikeOrder(text) {
+      var lower = text.toLowerCase();
+      var hasOrderWord = /\b(order|reorder|buy|purchase)\b/.test(lower);
+      var hasFromWord = /\b(from|on|at|through)\b/.test(lower);
+      var hasCartWord = /add .+ to .+ cart/i.test(lower);
+      return (hasOrderWord && hasFromWord) || hasCartWord;
+    }
+
+    // Extract supplier name hint from message for status display
+    function extractSupplierHint(text) {
+      var lower = text.toLowerCase();
+      var match = lower.match(/(?:from|on|at|through)\s+([a-z\s]+?)(?:\s*[.!?]?\s*$)/i);
+      if (match) return match[1].trim();
+      var known = lower.match(/\b(sysco|us foods|restaurant depot|gordon food|shamrock)\b/i);
+      if (known) return known[1];
+      return 'supplier';
+    }
+
     async function sendMessage() {
       var text = chatInput.value.trim();
       if (!text || !currentUserId) return;
@@ -1066,12 +1107,21 @@
       chatInput.disabled = true;
       chatSendBtn.disabled = true;
 
-      // Show thinking indicator
-      var thinkingMsg = document.createElement('div');
-      thinkingMsg.className = 'chat-msg bot msg-thinking';
-      thinkingMsg.textContent = 'Thinking...';
-      chatMessages.appendChild(thinkingMsg);
-      chatMessages.scrollTop = chatMessages.scrollHeight;
+      // Detect if this looks like an order for better UX
+      var isOrderLike = looksLikeOrder(text);
+      var statusEl = null;
+
+      if (isOrderLike) {
+        var supplierHint = extractSupplierHint(text);
+        statusEl = showOrderStatus('Opening ' + supplierHint + '...');
+      } else {
+        // Show thinking indicator for normal messages
+        var thinkingMsg = document.createElement('div');
+        thinkingMsg.className = 'chat-msg bot msg-thinking';
+        thinkingMsg.textContent = 'Thinking...';
+        chatMessages.appendChild(thinkingMsg);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
 
       try {
         var res = await fetch('/api/chat', {
@@ -1086,15 +1136,26 @@
 
         var data = await res.json();
 
-        // Remove thinking indicator
-        if (thinkingMsg.parentNode) thinkingMsg.remove();
+        // Remove thinking/status indicator
+        if (statusEl && statusEl.parentNode) statusEl.remove();
+        if (typeof thinkingMsg !== 'undefined' && thinkingMsg && thinkingMsg.parentNode) thinkingMsg.remove();
 
         var replyText = data.reply || 'Something went wrong. Try again.';
 
-        var botMsg = document.createElement('div');
-        botMsg.className = 'chat-msg bot';
-        botMsg.textContent = replyText;
-        chatMessages.appendChild(botMsg);
+        // If this was an order, show as order status style
+        if (data.isOrder) {
+          var orderMsg = document.createElement('div');
+          orderMsg.className = 'chat-msg bot order-status';
+          orderMsg.style.animation = 'none';
+          orderMsg.style.opacity = '1';
+          orderMsg.textContent = replyText;
+          chatMessages.appendChild(orderMsg);
+        } else {
+          var botMsg = document.createElement('div');
+          botMsg.className = 'chat-msg bot';
+          botMsg.textContent = replyText;
+          chatMessages.appendChild(botMsg);
+        }
         chatMessages.scrollTop = chatMessages.scrollHeight;
 
         // Track in history
@@ -1106,8 +1167,9 @@
 
         if (data.limitReached) return;
       } catch (err) {
-        // Remove thinking indicator
-        if (thinkingMsg.parentNode) thinkingMsg.remove();
+        // Remove indicators
+        if (statusEl && statusEl.parentNode) statusEl.remove();
+        if (typeof thinkingMsg !== 'undefined' && thinkingMsg && thinkingMsg.parentNode) thinkingMsg.remove();
 
         var errMsg = document.createElement('div');
         errMsg.className = 'chat-msg bot';

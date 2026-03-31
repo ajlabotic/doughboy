@@ -1,6 +1,105 @@
 const { createClient } = require('@supabase/supabase-js')
 const fetch = require('node-fetch')
 
+// Detect ordering intent and extract supplier + item info
+function detectOrderIntent(message) {
+  var lower = message.toLowerCase()
+
+  // Patterns that indicate ordering intent
+  var orderPatterns = [
+    /(?:order|buy|purchase|get|add)\s+(\d+\s*(?:lbs?|pounds?|cases?|bags?|boxes?|units?|gallons?|oz|each|ct)?\s+)?(.+?)\s+(?:from|on|at|through)\s+(.+)/i,
+    /(?:i need to order|i need to reorder|reorder|can you order)\s+(.+?)\s+(?:from|on|at|through)\s+(.+)/i,
+    /add\s+(.+?)\s+to\s+(?:my\s+)?(.+?)\s+cart/i
+  ]
+
+  for (var i = 0; i < orderPatterns.length; i++) {
+    var match = lower.match(orderPatterns[i])
+    if (match) {
+      if (i === 0) {
+        return {
+          isOrder: true,
+          quantity: (match[1] || '').trim(),
+          item: (match[2] || '').trim(),
+          supplier: (match[3] || '').trim().replace(/[.!?]+$/, '')
+        }
+      } else if (i === 1) {
+        return {
+          isOrder: true,
+          quantity: '',
+          item: (match[1] || '').trim(),
+          supplier: (match[2] || '').trim().replace(/[.!?]+$/, '')
+        }
+      } else {
+        return {
+          isOrder: true,
+          quantity: '',
+          item: (match[1] || '').trim(),
+          supplier: (match[2] || '').trim().replace(/[.!?]+$/, '')
+        }
+      }
+    }
+  }
+
+  // Check for simpler ordering keywords
+  var hasOrderWord = /\b(order|reorder|buy|purchase)\b/.test(lower)
+  var hasFromWord = /\b(from|on|at)\b/.test(lower)
+  var hasSupplierWord = /\b(sysco|us foods|restaurant depot|usfoods|gordon food|shamrock|performance food)\b/.test(lower)
+
+  if (hasOrderWord && (hasFromWord || hasSupplierWord)) {
+    // Try to extract supplier name
+    var supplierMatch = lower.match(/\b(sysco|us foods|usfoods|restaurant depot|gordon food|shamrock|performance food)\b/)
+    var supplierName = supplierMatch ? supplierMatch[1] : null
+
+    if (supplierName) {
+      // Normalize supplier names
+      if (supplierName === 'usfoods') supplierName = 'us foods'
+      supplierName = supplierName.charAt(0).toUpperCase() + supplierName.slice(1)
+
+      // Extract everything between the order word and "from" as the item
+      var itemMatch = lower.match(/(?:order|reorder|buy|purchase)\s+(.+?)(?:\s+from|\s+on|\s+at)/i)
+      var item = itemMatch ? itemMatch[1].trim() : message.replace(/^.*?(?:order|reorder|buy|purchase)\s+/i, '').replace(/\s+(?:from|on|at).*/i, '').trim()
+
+      return {
+        isOrder: true,
+        quantity: '',
+        item: item,
+        supplier: supplierName
+      }
+    }
+  }
+
+  return { isOrder: false }
+}
+
+// Find the best matching supplier name from saved credentials
+async function findMatchingSupplier(supabase, userId, supplierHint) {
+  var result = await supabase
+    .from('supplier_credentials')
+    .select('supplier_name')
+    .eq('user_id', userId)
+
+  if (!result.data || result.data.length === 0) return null
+
+  var hint = supplierHint.toLowerCase()
+
+  // Exact match first
+  for (var i = 0; i < result.data.length; i++) {
+    if (result.data[i].supplier_name.toLowerCase() === hint) {
+      return result.data[i].supplier_name
+    }
+  }
+
+  // Partial match
+  for (var j = 0; j < result.data.length; j++) {
+    var name = result.data[j].supplier_name.toLowerCase()
+    if (name.indexOf(hint) !== -1 || hint.indexOf(name) !== -1) {
+      return result.data[j].supplier_name
+    }
+  }
+
+  return null
+}
+
 function buildSystemPrompt(profile, csvData, ingredientCosts, overheadCosts, calculatedMetrics) {
   var prompt = 'You are Doughboy, an AI profit agent for independent restaurants. You have access to this restaurant\'s sales data, labor data, and food cost data. Always give specific dollar amounts. Never give generic advice. Speak like a knowledgeable friend, not a corporate consultant. If you see a margin problem, flag it immediately with the exact dollar impact. The restaurant owner is an expert at their craft. Your job is to handle the numbers so they can focus on the food and the guests.\n\n'
 
@@ -156,6 +255,68 @@ module.exports = async function handler(req, res) {
       used: profile.chat_questions_used,
       limit: profile.chat_questions_limit
     })
+  }
+
+  // Check for ordering intent before routing to OpenRouter
+  var orderIntent = detectOrderIntent(message)
+
+  if (orderIntent.isOrder && orderIntent.supplier) {
+    var matchedSupplier = await findMatchingSupplier(supabase, userId, orderIntent.supplier)
+
+    if (matchedSupplier) {
+      // Route to ordering agent
+      console.log('Order intent detected:', orderIntent.item, 'from', matchedSupplier)
+
+      try {
+        var orderResponse = await fetch((process.env.VERCEL_URL ? 'https://' + process.env.VERCEL_URL : 'http://localhost:3000') + '/api/order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: userId,
+            supplierName: matchedSupplier,
+            itemDescription: orderIntent.item,
+            quantity: orderIntent.quantity
+          })
+        })
+
+        var orderData = await orderResponse.json()
+
+        // Increment usage counter for order requests too
+        await supabase
+          .from('profiles')
+          .update({ chat_questions_used: profile.chat_questions_used + 1 })
+          .eq('id', userId)
+
+        return res.status(200).json({
+          reply: orderData.reply || 'I started working on your order but something went wrong.',
+          limitReached: false,
+          used: profile.chat_questions_used + 1,
+          limit: profile.chat_questions_limit,
+          orderStatus: orderData.status || 'unknown',
+          isOrder: true,
+          supplier: matchedSupplier,
+          item: orderIntent.item
+        })
+      } catch (orderErr) {
+        console.error('Order routing error:', orderErr)
+        // Fall through to normal chat if order fails
+      }
+    } else if (orderIntent.supplier) {
+      // Supplier mentioned but no credentials saved
+      await supabase
+        .from('profiles')
+        .update({ chat_questions_used: profile.chat_questions_used + 1 })
+        .eq('id', userId)
+
+      return res.status(200).json({
+        reply: 'I\'d love to help you order from ' + orderIntent.supplier + ', but I don\'t have login credentials saved for them yet. Head to the My Suppliers section on your dashboard and add ' + orderIntent.supplier + ' first, then try again.',
+        limitReached: false,
+        used: profile.chat_questions_used + 1,
+        limit: profile.chat_questions_limit
+      })
+    }
+  } else if (orderIntent.isOrder && !orderIntent.supplier) {
+    // Order intent but no supplier specified, let OpenRouter ask which supplier
   }
 
   // Gather all user context
