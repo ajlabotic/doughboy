@@ -25,16 +25,30 @@ module.exports = async function handler(req, res) {
     )
 
     // Upsert each ingredient cost
+    console.log('Costs received:', JSON.stringify(costs))
+    console.log('User ID:', userId)
+
     for (var i = 0; i < costs.length; i++) {
       var item = costs[i]
-      await supabase
+      console.log('Saving:', item.item_name, item.cost_per_portion)
+
+      var result = await supabase
         .from('ingredient_costs')
         .upsert({
           user_id: userId,
           item_name: item.item_name,
           cost_per_portion: item.cost_per_portion,
           updated_at: new Date().toISOString()
-        }, { onConflict: 'user_id,item_name' })
+        }, {
+          onConflict: 'user_id,item_name',
+          ignoreDuplicates: false
+        })
+
+      if (result.error) {
+        console.error('Error saving', item.item_name, ':', result.error)
+      } else {
+        console.log('Saved:', item.item_name)
+      }
     }
 
     // Fetch latest csv_data for item quantities and revenue
