@@ -1,7 +1,7 @@
 const { createClient } = require('@supabase/supabase-js')
 const fetch = require('node-fetch')
 
-function buildSystemPrompt(profile, csvData, ingredientCosts, overheadCosts) {
+function buildSystemPrompt(profile, csvData, ingredientCosts, overheadCosts, calculatedMetrics) {
   var prompt = 'You are Doughboy, an AI profit agent for independent restaurants. You have access to this restaurant\'s sales data, labor data, and food cost data. Always give specific dollar amounts. Never give generic advice. Speak like a knowledgeable friend, not a corporate consultant. If you see a margin problem, flag it immediately with the exact dollar impact. The restaurant owner is an expert at their craft. Your job is to handle the numbers so they can focus on the food and the guests.\n\n'
 
   prompt += 'PERSONALITY RULES:\n'
@@ -72,45 +72,15 @@ function buildSystemPrompt(profile, csvData, ingredientCosts, overheadCosts) {
   prompt += '- Flag any menu item with food cost above 32%\n'
   prompt += '- Flag any shift where labor cost exceeds 35% of that shift revenue\n\n'
 
-  // Add calculated metrics section so AI uses dashboard numbers
-  if (csvData && csvData.raw_data) {
-    var revenue = parseFloat(csvData.raw_data.totalRevenue) || 0
-    var laborPct = parseFloat(csvData.raw_data.laborCostPercent) || 0
-    var foodPct = 0
-
-    if (ingredientCosts && ingredientCosts.length > 0 && csvData.raw_data.itemQuantities && revenue > 0) {
-      var totalFoodCost = 0
-      ingredientCosts.forEach(function(c) {
-        var qty = csvData.raw_data.itemQuantities[c.item_name] || 0
-        totalFoodCost += (parseFloat(c.cost_per_portion) || 0) * qty
-      })
-      foodPct = parseFloat(((totalFoodCost / revenue) * 100).toFixed(1))
-    }
-
-    var netMargin = (100 - foodPct - laborPct).toFixed(1)
-    var trueNetMargin = netMargin
-
-    if (overheadCosts) {
-      var totalMonthly = (parseFloat(overheadCosts.monthly_rent) || 0) +
-        (parseFloat(overheadCosts.monthly_utilities) || 0) +
-        (parseFloat(overheadCosts.monthly_insurance) || 0) +
-        (parseFloat(overheadCosts.monthly_supplies) || 0) +
-        (parseFloat(overheadCosts.monthly_other) || 0)
-      if (revenue > 0) {
-        var weeklyOverhead = totalMonthly / 4.33
-        var overheadPct = (weeklyOverhead / revenue) * 100
-        trueNetMargin = (parseFloat(netMargin) - overheadPct).toFixed(1)
-      }
-    }
-
-    prompt += 'IMPORTANT CALCULATED METRICS FROM DASHBOARD:\n'
-    prompt += 'These numbers are already calculated and displayed to the owner. Use these exact numbers when discussing margins, do not recalculate them yourself.\n'
-    prompt += '- Total revenue: $' + revenue.toFixed(2) + '\n'
-    if (foodPct > 0) prompt += '- Food cost %: ' + foodPct + '% (calculated from ingredient costs divided by revenue)\n'
-    if (laborPct > 0) prompt += '- Labor cost %: ' + laborPct + '% (calculated from shift hours and hourly rates divided by revenue)\n'
-    prompt += '- Operating margin (after food + labor): ' + netMargin + '%\n'
-    if (overheadCosts) prompt += '- True net margin (after food + labor + overhead): ' + trueNetMargin + '%\n'
-    prompt += 'Always reference these dashboard numbers when the owner asks about margins or how they are doing. Do not make up different numbers.\n'
+  if (calculatedMetrics) {
+    prompt += 'CALCULATED METRICS (use these exact numbers, do not recalculate them yourself):\n'
+    prompt += '- Total revenue: $' + parseFloat(calculatedMetrics.totalRevenue).toFixed(2) + '\n'
+    prompt += '- Total food cost: $' + parseFloat(calculatedMetrics.totalFoodCost).toFixed(2) + ' (' + calculatedMetrics.foodCostPct + '% of revenue)\n'
+    prompt += '- Total labor cost: $' + parseFloat(calculatedMetrics.totalLaborCost).toFixed(2) + ' (' + calculatedMetrics.laborCostPct + '% of revenue)\n'
+    prompt += '- Operating margin: ' + calculatedMetrics.operatingMarginPct + '% (after food and labor)\n'
+    prompt += '- Monthly overhead: $' + parseFloat(calculatedMetrics.totalMonthlyOverhead).toFixed(2) + '\n'
+    prompt += '- True net margin: ' + calculatedMetrics.trueNetPct + '% (after food, labor, and overhead)\n\n'
+    prompt += 'CRITICAL RULE: When the owner asks about margins, food cost, labor cost, or how they are doing, use ONLY the numbers listed above. Do not do your own arithmetic. These are the same numbers displayed on their dashboard. If you calculate a different number than what is listed here, you are wrong and the number above is correct.\n'
   }
 
   return prompt
@@ -220,8 +190,78 @@ module.exports = async function handler(req, res) {
   if (overheadCosts) console.log('Overhead data:', JSON.stringify(overheadCosts))
   if (ingredientCosts && ingredientCosts.length > 0) console.log('Ingredient data:', JSON.stringify(ingredientCosts))
 
+  // Pre-calculate metrics so AI uses exact dashboard numbers
+  var calculatedMetrics = null
+
+  if (csvData && csvData.raw_data && ingredientCosts && ingredientCosts.length > 0) {
+    var costMap = {}
+    ingredientCosts.forEach(function(item) {
+      costMap[item.item_name] = parseFloat(item.cost_per_portion) || 0
+    })
+
+    var totalRevenue = 0
+    var totalFoodCost = 0
+    var totalLaborCost = 0
+    var rawData = csvData.raw_data
+
+    if (rawData.rows && Array.isArray(rawData.rows)) {
+      rawData.rows.forEach(function(row) {
+        var qty = parseFloat(row.quantity) || 0
+        var price = parseFloat(row.sale_price) || 0
+        var hours = parseFloat(row.hours_worked) || 0
+        var rate = parseFloat(row.hourly_rate) || 0
+        var itemName = row.item_name || ''
+        totalRevenue += qty * price
+        totalLaborCost += hours * rate
+        if (costMap[itemName]) {
+          totalFoodCost += costMap[itemName] * qty
+        }
+      })
+    } else if (rawData.itemQuantities) {
+      totalRevenue = parseFloat(rawData.totalRevenue) || 0
+      totalLaborCost = parseFloat(rawData.totalLaborCost) || 0
+      Object.keys(rawData.itemQuantities).forEach(function(itemName) {
+        var qty = rawData.itemQuantities[itemName] || 0
+        if (costMap[itemName]) {
+          totalFoodCost += costMap[itemName] * qty
+        }
+      })
+    }
+
+    var totalMonthlyOverhead = 0
+    if (overheadCosts) {
+      totalMonthlyOverhead =
+        (parseFloat(overheadCosts.monthly_rent) || 0) +
+        (parseFloat(overheadCosts.monthly_utilities) || 0) +
+        (parseFloat(overheadCosts.monthly_insurance) || 0) +
+        (parseFloat(overheadCosts.monthly_supplies) || 0) +
+        (parseFloat(overheadCosts.monthly_other) || 0)
+    }
+
+    if (totalRevenue > 0) {
+      var foodCostPct = ((totalFoodCost / totalRevenue) * 100).toFixed(1)
+      var laborCostPct = ((totalLaborCost / totalRevenue) * 100).toFixed(1)
+      var operatingMarginPct = (100 - parseFloat(foodCostPct) - parseFloat(laborCostPct)).toFixed(1)
+      var weeklyOverhead = totalMonthlyOverhead / 4.33
+      var trueNetPct = (((totalRevenue - totalFoodCost - totalLaborCost - weeklyOverhead) / totalRevenue) * 100).toFixed(1)
+
+      calculatedMetrics = {
+        totalRevenue: totalRevenue,
+        totalFoodCost: totalFoodCost,
+        totalLaborCost: totalLaborCost,
+        foodCostPct: foodCostPct,
+        laborCostPct: laborCostPct,
+        operatingMarginPct: operatingMarginPct,
+        totalMonthlyOverhead: totalMonthlyOverhead,
+        trueNetPct: trueNetPct
+      }
+
+      console.log('Calculated metrics:', JSON.stringify(calculatedMetrics))
+    }
+  }
+
   // Build system prompt
-  var systemPrompt = buildSystemPrompt(profile, csvData, ingredientCosts, overheadCosts)
+  var systemPrompt = buildSystemPrompt(profile, csvData, ingredientCosts, overheadCosts, calculatedMetrics)
 
   // Classify question to pick the right model
   var model = classifyQuestion(message)
