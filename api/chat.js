@@ -40,25 +40,16 @@ function detectOrderIntent(message) {
     }
   }
 
-  // Check for simpler ordering keywords
   var hasOrderWord = /\b(order|reorder|buy|purchase)\b/.test(lower)
-  var hasFromWord = /\b(from|on|at)\b/.test(lower)
-  var hasSupplierWord = /\b(sysco|us foods|restaurant depot|usfoods|gordon food|shamrock|performance food)\b/.test(lower)
+  var hasFromWord = /\b(from|on|at|through)\b/.test(lower)
 
-  if (hasOrderWord && (hasFromWord || hasSupplierWord)) {
-    // Try to extract supplier name
-    var supplierMatch = lower.match(/\b(sysco|us foods|usfoods|restaurant depot|gordon food|shamrock|performance food)\b/)
-    var supplierName = supplierMatch ? supplierMatch[1] : null
+  if (hasOrderWord && hasFromWord) {
+    var fromMatch = lower.match(/(?:from|on|at|through)\s+([a-z0-9\s]+?)(?:\s*$|[.!?])/)
+    var supplierName = fromMatch ? fromMatch[1].trim() : null
+    var itemMatch2 = lower.match(/(?:order|reorder|buy|purchase)\s+(.+?)(?:\s+from|\s+on|\s+at|\s+through)/i)
+    var item = itemMatch2 ? itemMatch2[1].trim() : ''
 
     if (supplierName) {
-      // Normalize supplier names
-      if (supplierName === 'usfoods') supplierName = 'us foods'
-      supplierName = supplierName.charAt(0).toUpperCase() + supplierName.slice(1)
-
-      // Extract everything between the order word and "from" as the item
-      var itemMatch = lower.match(/(?:order|reorder|buy|purchase)\s+(.+?)(?:\s+from|\s+on|\s+at)/i)
-      var item = itemMatch ? itemMatch[1].trim() : message.replace(/^.*?(?:order|reorder|buy|purchase)\s+/i, '').replace(/\s+(?:from|on|at).*/i, '').trim()
-
       return {
         isOrder: true,
         quantity: '',
