@@ -35,23 +35,14 @@ async function destroyBrowserSession(sessionId) {
   }
 }
 
-// Take a screenshot via BrowserBase debug URL
-async function takeScreenshot(sessionId) {
-  var response = await fetch('https://www.browserbase.com/v1/sessions/' + sessionId + '/debug', {
-    method: 'GET',
-    headers: {
-      'x-bb-api-key': process.env.BROWSERBASE_API_KEY
-    }
-  })
-  var data = await response.json()
-  return data
-}
 
-// Run the computer use loop with Anthropic
-async function computerUseLoop(sessionId, websiteUrl, username, password, itemDescription, quantity) {
-  var connectUrl = 'wss://connect.browserbase.com?apiKey=' + process.env.BROWSERBASE_API_KEY + '&sessionId=' + sessionId
+async function computerUseLoop(sessionId, connectUrl, websiteUrl, username, password, itemDescription, quantity) {
+  const { chromium } = require('playwright-core')
 
-  // Initial instructions for Claude
+  var browser = await chromium.connectOverCDP(connectUrl)
+  var defaultContext = browser.contexts()[0]
+  var page = defaultContext.pages()[0]
+
   var systemPrompt = 'You are an ordering agent for a restaurant. You are controlling a web browser to place an order on a supplier website. Follow these steps exactly:\n' +
     '1. Navigate to: ' + websiteUrl + '\n' +
     '2. Log in with the provided credentials\n' +
@@ -61,10 +52,9 @@ async function computerUseLoop(sessionId, websiteUrl, username, password, itemDe
     '6. Report what is in the cart and the URL\n\n' +
     'CRITICAL RULES:\n' +
     '- NEVER navigate to any checkout or payment page\n' +
-    '- NEVER click any "Place Order", "Pay", "Checkout", or "Submit Order" buttons\n' +
-    '- STOP at the cart/basket page\n' +
-    '- If you see a payment form, STOP immediately and report the cart contents\n' +
-    '- Report the cart URL, items, quantities, and any visible prices'
+    '- NEVER click any Place Order, Pay, Checkout, or Submit Order buttons\n' +
+    '- STOP at the cart page\n' +
+    '- Report the cart URL, items, quantities, and visible prices'
 
   var messages = [
     {
@@ -72,7 +62,7 @@ async function computerUseLoop(sessionId, websiteUrl, username, password, itemDe
       content: [
         {
           type: 'text',
-          text: systemPrompt + '\n\nCredentials - Username: ' + username + ', Password: ' + password + '\n\nStart by navigating to the website.'
+          text: systemPrompt + '\n\nCredentials - Username: ' + username + ', Password: ' + password + '\n\nStart by navigating to the website and take a screenshot to show me the current state.'
         }
       ]
     }
@@ -88,139 +78,147 @@ async function computerUseLoop(sessionId, websiteUrl, username, password, itemDe
     }
   ]
 
-  var maxSteps = 15
+  var maxSteps = 20
   var result = { status: 'error', message: 'Order flow did not complete', cartUrl: null, cartSummary: null }
 
-  for (var step = 0; step < maxSteps; step++) {
-    console.log('Computer use step ' + (step + 1))
+  try {
+    for (var step = 0; step < maxSteps; step++) {
+      console.log('Computer use step ' + (step + 1))
 
-    var response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'computer-use-2025-01-24'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1024,
-        tools: tools,
-        messages: messages
-      })
-    })
-
-    var aiData = await response.json()
-
-    if (aiData.error) {
-      console.error('Anthropic error:', aiData.error)
-      result.message = 'AI agent encountered an error: ' + (aiData.error.message || 'Unknown error')
-      break
-    }
-
-    var stopReason = aiData.stop_reason
-    var contentBlocks = aiData.content || []
-
-    // Check for text responses that indicate completion or issues
-    var textBlocks = contentBlocks.filter(function(b) { return b.type === 'text' })
-    var toolBlocks = contentBlocks.filter(function(b) { return b.type === 'tool_use' })
-
-    // If Claude returned text with cart info, extract it
-    if (textBlocks.length > 0) {
-      var fullText = textBlocks.map(function(b) { return b.text }).join('\n')
-
-      // Check for payment page warnings
-      if (fullText.toLowerCase().indexOf('payment') !== -1 ||
-          fullText.toLowerCase().indexOf('checkout') !== -1) {
-        console.log('Agent detected payment page, stopping')
-      }
-
-      // Check if cart info was reported
-      if (fullText.toLowerCase().indexOf('cart') !== -1 ||
-          fullText.toLowerCase().indexOf('basket') !== -1) {
-        result.status = 'success'
-        result.cartSummary = fullText
-        result.message = 'Cart ready'
-
-        // Try to extract URL from text
-        var urlMatch = fullText.match(/https?:\/\/[^\s"'<>]+/)
-        if (urlMatch) result.cartUrl = urlMatch[0]
-      }
-    }
-
-    // If no tool use requested, we're done
-    if (toolBlocks.length === 0 || stopReason === 'end_turn') {
-      if (result.status !== 'success' && textBlocks.length > 0) {
-        result.cartSummary = textBlocks.map(function(b) { return b.text }).join('\n')
-        result.status = 'partial'
-        result.message = 'Agent completed but could not confirm cart contents'
-      }
-      break
-    }
-
-    // Process tool use — for computer use, we need to get a screenshot and feed it back
-    var toolResults = []
-
-    for (var t = 0; t < toolBlocks.length; t++) {
-      var toolCall = toolBlocks[t]
-
-      if (toolCall.name === 'computer') {
-        // Execute the computer action via BrowserBase CDP
-        var action = toolCall.input
-        console.log('Computer action:', action.action)
-
-        // Get screenshot after action
-        // BrowserBase handles the actual browser interaction via CDP
-        // For the computer use API, we return a screenshot
-        var screenshotResult = await getSessionScreenshot(sessionId)
-
-        toolResults.push({
-          type: 'tool_result',
-          tool_use_id: toolCall.id,
-          content: screenshotResult ? [
-            {
-              type: 'image',
-              source: {
-                type: 'base64',
-                media_type: 'image/png',
-                data: screenshotResult
-              }
-            }
-          ] : [
-            { type: 'text', text: 'Screenshot unavailable' }
-          ]
+      var response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+          'anthropic-beta': 'computer-use-2025-01-24'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 1024,
+          tools: tools,
+          messages: messages
         })
+      })
+
+      var aiData = await response.json()
+
+      if (aiData.error) {
+        console.error('Anthropic error:', aiData.error)
+        result.message = 'AI error: ' + (aiData.error.message || 'Unknown')
+        break
+      }
+
+      var stopReason = aiData.stop_reason
+      var contentBlocks = aiData.content || []
+      var textBlocks = contentBlocks.filter(function(b) { return b.type === 'text' })
+      var toolBlocks = contentBlocks.filter(function(b) { return b.type === 'tool_use' })
+
+      if (textBlocks.length > 0) {
+        var fullText = textBlocks.map(function(b) { return b.text }).join('\n')
+        if (fullText.toLowerCase().indexOf('cart') !== -1) {
+          result.status = 'success'
+          result.cartSummary = fullText
+          result.message = 'Cart ready'
+          var urlMatch = fullText.match(/https?:\/\/[^\s"\'<>]+/)
+          if (urlMatch) result.cartUrl = urlMatch[0]
+        }
+      }
+
+      if (toolBlocks.length === 0 || stopReason === 'end_turn') {
+        if (result.status !== 'success' && textBlocks.length > 0) {
+          result.cartSummary = textBlocks.map(function(b) { return b.text }).join('\n')
+          result.status = 'partial'
+        }
+        break
+      }
+
+      var toolResults = []
+
+      for (var t = 0; t < toolBlocks.length; t++) {
+        var toolCall = toolBlocks[t]
+
+        if (toolCall.name === 'computer') {
+          var action = toolCall.input
+          console.log('Action:', action.action)
+
+          try {
+            if (action.action === 'screenshot') {
+              // Just take screenshot, no action needed
+            } else if (action.action === 'left_click' && action.coordinate) {
+              await page.mouse.click(action.coordinate[0], action.coordinate[1])
+              await page.waitForTimeout(500)
+            } else if (action.action === 'type' && action.text) {
+              await page.keyboard.type(action.text)
+              await page.waitForTimeout(300)
+            } else if (action.action === 'key' && action.key) {
+              await page.keyboard.press(action.key)
+              await page.waitForTimeout(300)
+            } else if (action.action === 'scroll' && action.coordinate) {
+              await page.mouse.wheel(0, action.direction === 'down' ? 300 : -300)
+              await page.waitForTimeout(300)
+            } else if (action.action === 'navigate' && action.url) {
+              var url = action.url
+              if (url.includes('checkout') || url.includes('payment')) {
+                console.log('Blocked navigation to payment page')
+                toolResults.push({
+                  type: 'tool_result',
+                  tool_use_id: toolCall.id,
+                  content: [{ type: 'text', text: 'Navigation to payment/checkout pages is not allowed. Stop at the cart page.' }]
+                })
+                continue
+              }
+              await page.goto(url)
+              await page.waitForTimeout(1000)
+            }
+          } catch (actionErr) {
+            console.error('Action error:', actionErr.message)
+          }
+
+          // Take screenshot via CDP
+          var cdpClient = await defaultContext.newCDPSession(page)
+          var screenshotData = await cdpClient.send('Page.captureScreenshot', {
+            format: 'jpeg',
+            quality: 60
+          })
+          await cdpClient.detach()
+
+          // Check current URL for payment page
+          var currentUrl = page.url()
+          if (currentUrl.includes('checkout') || currentUrl.includes('payment')) {
+            console.log('Detected payment page, stopping')
+            result.status = 'partial'
+            result.message = 'Stopped before checkout page'
+            break
+          }
+
+          toolResults.push({
+            type: 'tool_result',
+            tool_use_id: toolCall.id,
+            content: [
+              {
+                type: 'image',
+                source: {
+                  type: 'base64',
+                  media_type: 'image/jpeg',
+                  data: screenshotData.data
+                }
+              }
+            ]
+          })
+        }
+      }
+
+      messages.push({ role: 'assistant', content: contentBlocks })
+      if (toolResults.length > 0) {
+        messages.push({ role: 'user', content: toolResults })
       }
     }
-
-    // Add assistant response and tool results to messages
-    messages.push({ role: 'assistant', content: contentBlocks })
-    messages.push({ role: 'user', content: toolResults })
+  } finally {
+    await browser.close()
   }
 
   return result
-}
-
-async function getSessionScreenshot(sessionId) {
-  try {
-    var response = await fetch(
-      'https://www.browserbase.com/v1/sessions/' +
-      sessionId + '/recording/screenshots/latest', {
-      method: 'GET',
-      headers: {
-        'x-bb-api-key': process.env.BROWSERBASE_API_KEY
-      }
-    })
-    if (!response.ok) {
-      console.error('Screenshot response:', response.status)
-      return null
-    }
-    var buffer = await response.buffer()
-    return buffer.toString('base64')
-  } catch (e) {
-    console.error('Screenshot error:', e.message)
-    return null
-  }
 }
 
 module.exports = async function handler(req, res) {
@@ -280,6 +278,7 @@ module.exports = async function handler(req, res) {
     // Run the computer use ordering loop
     var result = await computerUseLoop(
       sessionId,
+      session.connectUrl,
       websiteUrl,
       decryptedUsername,
       decryptedPassword,
