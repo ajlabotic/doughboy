@@ -62,7 +62,7 @@ async function computerUseLoop(sessionId, connectUrl, websiteUrl, username, pass
       content: [
         {
           type: 'text',
-          text: systemPrompt + '\n\nCredentials - Username: ' + username + ', Password: ' + password + '\n\nStart by navigating to the website and take a screenshot to show me the current state.'
+          text: systemPrompt + '\n\nCredentials - Username: ' + username + ', Password: ' + password + '\n\nFirst action: use the computer tool to navigate to ' + websiteUrl + ' right now. Do not respond with text first. Use the tool immediately.'
         }
       ]
     }
@@ -84,6 +84,11 @@ async function computerUseLoop(sessionId, connectUrl, websiteUrl, username, pass
   try {
     for (var step = 0; step < maxSteps; step++) {
       console.log('Computer use step ' + (step + 1))
+
+      if (step === 0) {
+        await page.goto(websiteUrl)
+        await page.waitForTimeout(2000)
+      }
 
       var response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
