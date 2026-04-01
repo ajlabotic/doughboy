@@ -78,7 +78,7 @@ async function computerUseLoop(sessionId, connectUrl, websiteUrl, username, pass
     }
   ]
 
-  var maxSteps = 25
+  var maxSteps = 35
   var result = { status: 'error', message: 'Order flow did not complete', cartUrl: null, cartSummary: null }
 
   try {
@@ -121,6 +121,7 @@ async function computerUseLoop(sessionId, connectUrl, websiteUrl, username, pass
 
       if (textBlocks.length > 0) {
         var fullText = textBlocks.map(function(b) { return b.text }).join('\n')
+        console.log('Claude text response:', fullText.substring(0, 200))
         if (fullText.toLowerCase().indexOf('cart') !== -1) {
           result.status = 'success'
           result.cartSummary = fullText
@@ -146,6 +147,7 @@ async function computerUseLoop(sessionId, connectUrl, websiteUrl, username, pass
         if (toolCall.name === 'computer') {
           var action = toolCall.input
           console.log('Action:', action.action)
+          console.log('Current URL:', page.url())
 
           try {
             if (action.action === 'screenshot') {
