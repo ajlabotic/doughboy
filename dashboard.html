@@ -1579,6 +1579,10 @@
         '<div style="display:flex;flex-direction:column;gap:12px;">' +
         '<input type="text" id="supplier-name-input" placeholder="Sysco" style="border:1px solid rgba(54,48,49,0.15);border-radius:8px;padding:0.5rem 0.75rem;font-family:DM Sans,sans-serif;font-size:0.85rem;color:var(--espresso);background:white;">' +
         '<input type="text" id="supplier-url-input" placeholder="https://shop.sysco.com" style="border:1px solid rgba(54,48,49,0.15);border-radius:8px;padding:0.5rem 0.75rem;font-family:DM Sans,sans-serif;font-size:0.85rem;color:var(--espresso);background:white;">' +
+        '<div style="display:flex;flex-direction:column;gap:4px;">' +
+        '<input type="url" id="supplier-login-url-input" placeholder="https://supplier.com/login" style="border:1px solid rgba(54,48,49,0.15);border-radius:8px;padding:0.5rem 0.75rem;font-family:DM Sans,sans-serif;font-size:0.85rem;color:var(--espresso);background:white;">' +
+        '<small style="font-size:0.75rem;color:rgba(54,48,49,0.5);padding-left:4px;">The direct URL of the login page</small>' +
+        '</div>' +
         '<input type="text" id="supplier-user-input" placeholder="Username" style="border:1px solid rgba(54,48,49,0.15);border-radius:8px;padding:0.5rem 0.75rem;font-family:DM Sans,sans-serif;font-size:0.85rem;color:var(--espresso);background:white;">' +
         '<input type="password" id="supplier-pass-input" placeholder="Password" style="border:1px solid rgba(54,48,49,0.15);border-radius:8px;padding:0.5rem 0.75rem;font-family:DM Sans,sans-serif;font-size:0.85rem;color:var(--espresso);background:white;">' +
         '</div>' +
@@ -1599,6 +1603,7 @@
         var btn = this;
         var name = document.getElementById('supplier-name-input').value.trim();
         var url = document.getElementById('supplier-url-input').value.trim();
+        var loginUrl = document.getElementById('supplier-login-url-input').value.trim();
         var user = document.getElementById('supplier-user-input').value.trim();
         var pass = document.getElementById('supplier-pass-input').value;
 
@@ -1621,6 +1626,7 @@
               userId: currentUserId,
               supplierName: name,
               websiteUrl: url,
+              loginUrl: loginUrl,
               username: user,
               password: pass
             })

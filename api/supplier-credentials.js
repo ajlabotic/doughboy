@@ -29,6 +29,7 @@ module.exports = async function handler(req, res) {
     if (method === 'save') {
       var supplierName = body.supplierName
       var websiteUrl = body.websiteUrl
+      var loginUrl = body.loginUrl
       var username = body.username
       var password = body.password
 
@@ -45,6 +46,7 @@ module.exports = async function handler(req, res) {
           user_id: userId,
           supplier_name: supplierName,
           website_url: websiteUrl || '',
+          login_url: loginUrl || '',
           encrypted_username: encryptedUsername,
           encrypted_password: encryptedPassword,
           updated_at: new Date().toISOString()
@@ -65,7 +67,7 @@ module.exports = async function handler(req, res) {
     if (method === 'list') {
       var listResult = await supabase
         .from('supplier_credentials')
-        .select('supplier_name, website_url, created_at')
+        .select('supplier_name, website_url, login_url, created_at')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
 
@@ -107,7 +109,7 @@ module.exports = async function handler(req, res) {
 
       var getResult = await supabase
         .from('supplier_credentials')
-        .select('encrypted_username, encrypted_password, website_url')
+        .select('encrypted_username, encrypted_password, website_url, login_url')
         .eq('user_id', userId)
         .eq('supplier_name', supplierToGet)
         .maybeSingle()
@@ -123,7 +125,8 @@ module.exports = async function handler(req, res) {
         success: true,
         username: decryptedUsername,
         password: decryptedPassword,
-        websiteUrl: getResult.data.website_url
+        websiteUrl: getResult.data.website_url,
+        loginUrl: getResult.data.login_url
       })
     }
 

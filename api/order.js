@@ -36,7 +36,7 @@ async function destroyBrowserSession(sessionId) {
 }
 
 
-async function computerUseLoop(sessionId, connectUrl, websiteUrl, username, password, itemDescription, quantity) {
+async function computerUseLoop(sessionId, connectUrl, websiteUrl, loginUrl, username, password, itemDescription, quantity) {
   const { chromium } = require('playwright-core')
 
   var browser = await chromium.connectOverCDP(connectUrl)
@@ -86,7 +86,8 @@ async function computerUseLoop(sessionId, connectUrl, websiteUrl, username, pass
       console.log('Computer use step ' + (step + 1))
 
       if (step === 0) {
-        await page.goto(websiteUrl)
+        var startUrl = loginUrl || websiteUrl
+        await page.goto(startUrl)
         await page.waitForTimeout(2000)
       }
 
@@ -263,7 +264,7 @@ module.exports = async function handler(req, res) {
   // Fetch decrypted credentials
   var credResult = await supabase
     .from('supplier_credentials')
-    .select('encrypted_username, encrypted_password, website_url')
+    .select('encrypted_username, encrypted_password, website_url, login_url')
     .eq('user_id', userId)
     .eq('supplier_name', supplierName)
     .maybeSingle()
@@ -277,6 +278,7 @@ module.exports = async function handler(req, res) {
   }
 
   var websiteUrl = credResult.data.website_url
+  var loginUrl = credResult.data.login_url || websiteUrl
   var decryptedUsername = decrypt(credResult.data.encrypted_username)
   var decryptedPassword = decrypt(credResult.data.encrypted_password)
 
@@ -294,6 +296,7 @@ module.exports = async function handler(req, res) {
       sessionId,
       session.connectUrl,
       websiteUrl,
+      loginUrl,
       decryptedUsername,
       decryptedPassword,
       itemDescription,
