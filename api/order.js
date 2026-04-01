@@ -78,7 +78,7 @@ async function computerUseLoop(sessionId, connectUrl, websiteUrl, username, pass
     }
   ]
 
-  var maxSteps = 10
+  var maxSteps = 25
   var result = { status: 'error', message: 'Order flow did not complete', cartUrl: null, cartSummary: null }
 
   try {
