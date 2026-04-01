@@ -201,18 +201,20 @@ async function computerUseLoop(sessionId, websiteUrl, username, password, itemDe
   return result
 }
 
-// Get a screenshot from BrowserBase session
 async function getSessionScreenshot(sessionId) {
   try {
-    var response = await fetch('https://www.browserbase.com/v1/sessions/' + sessionId + '/screenshot', {
+    var response = await fetch(
+      'https://www.browserbase.com/v1/sessions/' +
+      sessionId + '/recording/screenshots/latest', {
       method: 'GET',
       headers: {
         'x-bb-api-key': process.env.BROWSERBASE_API_KEY
       }
     })
-
-    if (!response.ok) return null
-
+    if (!response.ok) {
+      console.error('Screenshot response:', response.status)
+      return null
+    }
     var buffer = await response.buffer()
     return buffer.toString('base64')
   } catch (e) {
