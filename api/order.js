@@ -72,13 +72,13 @@ async function computerUseLoop(sessionId, connectUrl, websiteUrl, username, pass
     {
       type: 'computer_20250124',
       name: 'computer',
-      display_width_px: 1280,
-      display_height_px: 800,
+      display_width_px: 640,
+      display_height_px: 400,
       display_number: 0
     }
   ]
 
-  var maxSteps = 20
+  var maxSteps = 10
   var result = { status: 'error', message: 'Order flow did not complete', cartUrl: null, cartSummary: null }
 
   try {
@@ -179,7 +179,14 @@ async function computerUseLoop(sessionId, connectUrl, websiteUrl, username, pass
           var cdpClient = await defaultContext.newCDPSession(page)
           var screenshotData = await cdpClient.send('Page.captureScreenshot', {
             format: 'jpeg',
-            quality: 60
+            quality: 30,
+            clip: {
+              x: 0,
+              y: 0,
+              width: 1280,
+              height: 800,
+              scale: 0.5
+            }
           })
           await cdpClient.detach()
 
