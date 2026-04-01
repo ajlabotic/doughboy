@@ -1,239 +1,229 @@
 var { createClient } = require('@supabase/supabase-js')
 var { decrypt } = require('./crypto-utils')
-var fetch = require('node-fetch')
 
-// Create a BrowserBase session and return sessionId + connectUrl
-async function createBrowserSession() {
-  var response = await fetch('https://www.browserbase.com/v1/sessions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-bb-api-key': process.env.BROWSERBASE_API_KEY
-    },
-    body: JSON.stringify({
-      projectId: process.env.BROWSERBASE_PROJECT_ID
-    })
-  })
-  var data = await response.json()
-  if (!data.id) throw new Error('Failed to create browser session')
-  return data
-}
+async function placeOrder(websiteUrl, loginUrl, username, password, itemDescription, quantity) {
+  var FirecrawlApp = require('@mendable/firecrawl-js').default
+  var { chromium } = require('playwright-core')
 
-// Destroy a BrowserBase session
-async function destroyBrowserSession(sessionId) {
-  try {
-    await fetch('https://www.browserbase.com/v1/sessions/' + sessionId, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-bb-api-key': process.env.BROWSERBASE_API_KEY
-      },
-      body: JSON.stringify({ status: 'REQUEST_RELEASE' })
-    })
-  } catch (e) {
-    console.error('Failed to destroy browser session:', e.message)
-  }
-}
-
-
-async function computerUseLoop(sessionId, connectUrl, websiteUrl, loginUrl, username, password, itemDescription, quantity) {
-  const { chromium } = require('playwright-core')
-
-  var browser = await chromium.connectOverCDP(connectUrl)
-  var defaultContext = browser.contexts()[0]
-  var page = defaultContext.pages()[0]
-
-  var systemPrompt = 'You are an ordering agent for a restaurant. You are controlling a web browser to place an order on a supplier website. Follow these steps exactly:\n' +
-    '1. Navigate to: ' + websiteUrl + '\n' +
-    '2. Log in with the provided credentials\n' +
-    '3. Search for: ' + quantity + ' ' + itemDescription + '\n' +
-    '4. Add the item to cart\n' +
-    '5. Go to the cart page\n' +
-    '6. Report what is in the cart and the URL\n\n' +
-    'CRITICAL RULES:\n' +
-    '- NEVER navigate to any checkout or payment page\n' +
-    '- NEVER click any Place Order, Pay, Checkout, or Submit Order buttons\n' +
-    '- STOP at the cart page\n' +
-    '- Report the cart URL, items, quantities, and visible prices'
-
-  var messages = [
-    {
-      role: 'user',
-      content: [
-        {
-          type: 'text',
-          text: systemPrompt + '\n\nCredentials - Username: ' + username + ', Password: ' + password + '\n\nFirst action: use the computer tool to navigate to ' + websiteUrl + ' right now. Do not respond with text first. Use the tool immediately.'
-        }
-      ]
-    }
-  ]
-
-  var tools = [
-    {
-      type: 'computer_20250124',
-      name: 'computer',
-      display_width_px: 640,
-      display_height_px: 400,
-      display_number: 0
-    }
-  ]
-
-  var maxSteps = 35
+  var firecrawl = new FirecrawlApp({ apiKey: process.env.FIRECRAWL_API_KEY })
+  var session = await firecrawl.browser()
   var result = { status: 'error', message: 'Order flow did not complete', cartUrl: null, cartSummary: null }
 
+  var browser = await chromium.connectOverCDP(session.cdpUrl)
+  var context = browser.contexts()[0]
+  var page = context.pages()[0]
+
   try {
-    for (var step = 0; step < maxSteps; step++) {
-      console.log('Computer use step ' + (step + 1))
+    // Step 1: Navigate to login page
+    var startUrl = loginUrl || websiteUrl
+    console.log('Navigating to:', startUrl)
+    await page.goto(startUrl)
+    await page.waitForTimeout(2000)
 
-      if (step === 0) {
-        var startUrl = loginUrl || websiteUrl
-        await page.goto(startUrl)
+    // Check for payment page
+    var currentUrl = page.url()
+    if (currentUrl.includes('checkout') || currentUrl.includes('payment')) {
+      result.status = 'partial'
+      result.message = 'Stopped — detected payment page'
+      return result
+    }
+
+    // Step 2: Log in
+    console.log('Attempting login')
+    try {
+      var emailInput = await page.$('input[type="email"], input[name="email"], input[name="username"], input[name="login"], input[id="email"], input[id="username"]')
+      if (emailInput) {
+        await emailInput.fill(username)
+      } else {
+        var textInputs = await page.$$('input[type="text"]')
+        if (textInputs.length > 0) {
+          await textInputs[0].fill(username)
+        }
+      }
+
+      var passwordInput = await page.$('input[type="password"]')
+      if (passwordInput) {
+        await passwordInput.fill(password)
+      }
+
+      await page.waitForTimeout(500)
+
+      var submitBtn = await page.$('button[type="submit"], input[type="submit"], button:has-text("Log in"), button:has-text("Login"), button:has-text("Sign in"), button:has-text("Sign In")')
+      if (submitBtn) {
+        await submitBtn.click()
+      } else {
+        await page.keyboard.press('Enter')
+      }
+
+      await page.waitForTimeout(3000)
+      console.log('After login URL:', page.url())
+    } catch (loginErr) {
+      console.error('Login error:', loginErr.message)
+      result.message = 'Could not log in: ' + loginErr.message
+      return result
+    }
+
+    // Check for payment page after login
+    currentUrl = page.url()
+    if (currentUrl.includes('checkout') || currentUrl.includes('payment')) {
+      result.status = 'partial'
+      result.message = 'Stopped — detected payment page after login'
+      return result
+    }
+
+    // Step 3: Search for item
+    console.log('Searching for:', quantity + ' ' + itemDescription)
+    try {
+      var searchInput = await page.$('input[type="search"], input[name="search"], input[name="q"], input[placeholder*="earch"], input[aria-label*="earch"]')
+      if (searchInput) {
+        await searchInput.fill(quantity ? quantity + ' ' + itemDescription : itemDescription)
+        await page.waitForTimeout(300)
+        await page.keyboard.press('Enter')
+        await page.waitForTimeout(3000)
+        console.log('Search results URL:', page.url())
+      } else {
+        console.log('No search input found, trying site navigation')
+        result.status = 'partial'
+        result.message = 'Logged in but could not find search field. You may need to search manually.'
+        result.cartUrl = page.url()
+        return result
+      }
+    } catch (searchErr) {
+      console.error('Search error:', searchErr.message)
+      result.status = 'partial'
+      result.message = 'Logged in but search failed: ' + searchErr.message
+      return result
+    }
+
+    // Check for payment page after search
+    currentUrl = page.url()
+    if (currentUrl.includes('checkout') || currentUrl.includes('payment')) {
+      result.status = 'partial'
+      result.message = 'Stopped — detected payment page'
+      return result
+    }
+
+    // Step 4: Click first product result
+    console.log('Looking for product results')
+    try {
+      var productLink = await page.$('a[href*="product"], a[href*="item"], .product a, .product-card a, .item a, [data-product] a')
+      if (productLink) {
+        await productLink.click()
         await page.waitForTimeout(2000)
+        console.log('Product page URL:', page.url())
+      } else {
+        console.log('No product link found, checking if results are inline')
       }
+    } catch (productErr) {
+      console.error('Product click error:', productErr.message)
+    }
 
-      var response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': process.env.ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01',
-          'anthropic-beta': 'computer-use-2025-01-24'
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1024,
-          tools: tools,
-          messages: messages
-        })
-      })
+    // Check for payment page
+    currentUrl = page.url()
+    if (currentUrl.includes('checkout') || currentUrl.includes('payment')) {
+      result.status = 'partial'
+      result.message = 'Stopped — detected payment page'
+      return result
+    }
 
-      var aiData = await response.json()
-
-      if (aiData.error) {
-        console.error('Anthropic error:', aiData.error)
-        result.message = 'AI error: ' + (aiData.error.message || 'Unknown')
-        break
-      }
-
-      var stopReason = aiData.stop_reason
-      var contentBlocks = aiData.content || []
-      var textBlocks = contentBlocks.filter(function(b) { return b.type === 'text' })
-      var toolBlocks = contentBlocks.filter(function(b) { return b.type === 'tool_use' })
-
-      if (textBlocks.length > 0) {
-        var fullText = textBlocks.map(function(b) { return b.text }).join('\n')
-        console.log('Claude text response:', fullText.substring(0, 200))
-        if (fullText.toLowerCase().indexOf('cart') !== -1) {
-          result.status = 'success'
-          result.cartSummary = fullText
-          result.message = 'Cart ready'
-          var urlMatch = fullText.match(/https?:\/\/[^\s"\'<>]+/)
-          if (urlMatch) result.cartUrl = urlMatch[0]
+    // Step 5: Set quantity if specified
+    if (quantity) {
+      try {
+        var qtyInput = await page.$('input[name="quantity"], input[name="qty"], input[type="number"], input[id="quantity"], input[id="qty"]')
+        if (qtyInput) {
+          await qtyInput.fill('')
+          await qtyInput.fill(String(quantity))
+          await page.waitForTimeout(300)
+          console.log('Set quantity to:', quantity)
         }
-      }
-
-      if (toolBlocks.length === 0 || stopReason === 'end_turn') {
-        if (result.status !== 'success' && textBlocks.length > 0) {
-          result.cartSummary = textBlocks.map(function(b) { return b.text }).join('\n')
-          result.status = 'partial'
-        }
-        break
-      }
-
-      var toolResults = []
-
-      for (var t = 0; t < toolBlocks.length; t++) {
-        var toolCall = toolBlocks[t]
-
-        if (toolCall.name === 'computer') {
-          var action = toolCall.input
-          console.log('Action:', action.action)
-          console.log('Current URL:', page.url())
-
-          try {
-            if (action.action === 'screenshot') {
-              // Just take screenshot, no action needed
-            } else if (action.action === 'left_click' && action.coordinate) {
-              await page.mouse.click(action.coordinate[0], action.coordinate[1])
-              await page.waitForTimeout(500)
-            } else if (action.action === 'type' && action.text) {
-              await page.keyboard.type(action.text)
-              await page.waitForTimeout(300)
-            } else if (action.action === 'key' && action.key) {
-              await page.keyboard.press(action.key)
-              await page.waitForTimeout(300)
-            } else if (action.action === 'scroll' && action.coordinate) {
-              await page.mouse.wheel(0, action.direction === 'down' ? 300 : -300)
-              await page.waitForTimeout(300)
-            } else if (action.action === 'navigate' && action.url) {
-              var url = action.url
-              if (url.includes('checkout') || url.includes('payment')) {
-                console.log('Blocked navigation to payment page')
-                toolResults.push({
-                  type: 'tool_result',
-                  tool_use_id: toolCall.id,
-                  content: [{ type: 'text', text: 'Navigation to payment/checkout pages is not allowed. Stop at the cart page.' }]
-                })
-                continue
-              }
-              await page.goto(url)
-              await page.waitForTimeout(1000)
-            }
-          } catch (actionErr) {
-            console.error('Action error:', actionErr.message)
-          }
-
-          // Take screenshot via CDP
-          var cdpClient = await defaultContext.newCDPSession(page)
-          var screenshotData = await cdpClient.send('Page.captureScreenshot', {
-            format: 'jpeg',
-            quality: 30,
-            clip: {
-              x: 0,
-              y: 0,
-              width: 1280,
-              height: 800,
-              scale: 0.5
-            }
-          })
-          await cdpClient.detach()
-
-          // Check current URL for payment page
-          var currentUrl = page.url()
-          if (currentUrl.includes('checkout') || currentUrl.includes('payment')) {
-            console.log('Detected payment page, stopping')
-            result.status = 'partial'
-            result.message = 'Stopped before checkout page'
-            break
-          }
-
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: toolCall.id,
-            content: [
-              {
-                type: 'image',
-                source: {
-                  type: 'base64',
-                  media_type: 'image/jpeg',
-                  data: screenshotData.data
-                }
-              }
-            ]
-          })
-        }
-      }
-
-      messages.push({ role: 'assistant', content: contentBlocks })
-      if (toolResults.length > 0) {
-        messages.push({ role: 'user', content: toolResults })
+      } catch (qtyErr) {
+        console.error('Quantity error:', qtyErr.message)
       }
     }
+
+    // Step 6: Add to cart
+    console.log('Looking for Add to Cart button')
+    try {
+      var addToCartBtn = await page.$('button:has-text("Add to Cart"), button:has-text("Add to cart"), button:has-text("Add To Cart"), button:has-text("ADD TO CART"), button[name="add"], input[value*="Add to Cart"], a:has-text("Add to Cart"), button:has-text("Add"), [data-action="add-to-cart"]')
+      if (addToCartBtn) {
+        await addToCartBtn.click()
+        await page.waitForTimeout(2000)
+        console.log('Clicked Add to Cart')
+      } else {
+        console.log('No Add to Cart button found')
+        result.status = 'partial'
+        result.message = 'Found product but could not find Add to Cart button. You may need to add it manually.'
+        result.cartUrl = page.url()
+        var pageContent = await page.textContent('body')
+        result.cartSummary = pageContent ? pageContent.substring(0, 500) : ''
+        return result
+      }
+    } catch (cartErr) {
+      console.error('Add to cart error:', cartErr.message)
+    }
+
+    // Step 7: Navigate to cart
+    console.log('Navigating to cart')
+    try {
+      var cartLink = await page.$('a[href*="cart"], a[href*="basket"], a:has-text("Cart"), a:has-text("View Cart"), a:has-text("Go to Cart"), button:has-text("View Cart"), button:has-text("Go to Cart")')
+      if (cartLink) {
+        await cartLink.click()
+        await page.waitForTimeout(2000)
+      } else {
+        // Try common cart URLs
+        var baseUrl = new URL(websiteUrl)
+        var cartUrls = [
+          baseUrl.origin + '/cart',
+          baseUrl.origin + '/basket',
+          baseUrl.origin + '/shopping-cart'
+        ]
+        for (var i = 0; i < cartUrls.length; i++) {
+          if (cartUrls[i].includes('checkout') || cartUrls[i].includes('payment')) continue
+          try {
+            await page.goto(cartUrls[i])
+            await page.waitForTimeout(1500)
+            var pageText = await page.textContent('body')
+            if (pageText && (pageText.toLowerCase().includes('cart') || pageText.toLowerCase().includes('basket'))) {
+              break
+            }
+          } catch (e) {
+            continue
+          }
+        }
+      }
+
+      // Check for payment page
+      currentUrl = page.url()
+      if (currentUrl.includes('checkout') || currentUrl.includes('payment')) {
+        result.status = 'partial'
+        result.message = 'Stopped — detected payment page'
+        return result
+      }
+
+      // Get cart info
+      result.cartUrl = page.url()
+      var title = await page.title()
+      var bodyText = await page.textContent('body')
+      result.cartSummary = (title || '') + '\n' + (bodyText ? bodyText.substring(0, 500) : '')
+      result.status = 'success'
+      result.message = 'Cart ready'
+      console.log('Cart URL:', result.cartUrl)
+    } catch (navErr) {
+      console.error('Cart navigation error:', navErr.message)
+      result.status = 'partial'
+      result.message = 'Item may have been added to cart but could not navigate to cart page.'
+      result.cartUrl = page.url()
+    }
+
+    return result
   } finally {
     await browser.close()
+    try {
+      await firecrawl.deleteBrowser(session.id)
+    } catch (e) {
+      console.error('Failed to delete Firecrawl session:', e.message)
+    }
   }
-
-  return result
 }
 
 module.exports = async function handler(req, res) {
@@ -286,19 +276,10 @@ module.exports = async function handler(req, res) {
   console.log('Decrypted username length:', decryptedUsername ? decryptedUsername.length : 0)
   console.log('Decrypted password length:', decryptedPassword ? decryptedPassword.length : 0)
 
-  var sessionId = null
-
   try {
-    // Create BrowserBase session
-    console.log('Creating browser session for', supplierName)
-    var session = await createBrowserSession()
-    sessionId = session.id
-    console.log('Browser session created:', sessionId)
+    console.log('Starting Firecrawl order flow for', supplierName)
 
-    // Run the computer use ordering loop
-    var result = await computerUseLoop(
-      sessionId,
-      session.connectUrl,
+    var result = await placeOrder(
       websiteUrl,
       loginUrl,
       decryptedUsername,
@@ -350,12 +331,5 @@ module.exports = async function handler(req, res) {
       status: 'error',
       reply: 'Something went wrong while ordering from ' + supplierName + '. Try logging in to their website directly for now. Error: ' + error.message
     })
-  } finally {
-    // Always destroy the browser session
-    if (sessionId) {
-      console.log('Destroying browser session:', sessionId)
-      await destroyBrowserSession(sessionId)
-    }
   }
 }
-
