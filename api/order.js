@@ -2,14 +2,24 @@ var { createClient } = require('@supabase/supabase-js')
 var { decrypt } = require('./crypto-utils')
 
 async function placeOrder(websiteUrl, loginUrl, username, password, itemDescription, quantity) {
-  var FirecrawlApp = require('@mendable/firecrawl-js').default
+  var fetch = require('node-fetch')
   var { chromium } = require('playwright-core')
 
-  var firecrawl = new FirecrawlApp({ apiKey: process.env.FIRECRAWL_API_KEY })
-  var session = await firecrawl.browser()
+  var sessionResponse = await fetch('https://api.firecrawl.dev/v1/browser', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + process.env.FIRECRAWL_API_KEY
+    },
+    body: JSON.stringify({})
+  })
+  var session = await sessionResponse.json()
+  console.log('Firecrawl session:', JSON.stringify(session))
+  var sessionId = session.id
+  var cdpUrl = session.cdpUrl || session.connectUrl || session.wsUrl
   var result = { status: 'error', message: 'Order flow did not complete', cartUrl: null, cartSummary: null }
 
-  var browser = await chromium.connectOverCDP(session.cdpUrl)
+  var browser = await chromium.connectOverCDP(cdpUrl)
   var context = browser.contexts()[0]
   var page = context.pages()[0]
 
@@ -219,7 +229,12 @@ async function placeOrder(websiteUrl, loginUrl, username, password, itemDescript
   } finally {
     await browser.close()
     try {
-      await firecrawl.deleteBrowser(session.id)
+      await fetch('https://api.firecrawl.dev/v1/browser/' + sessionId, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': 'Bearer ' + process.env.FIRECRAWL_API_KEY
+        }
+      })
     } catch (e) {
       console.error('Failed to delete Firecrawl session:', e.message)
     }
