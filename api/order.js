@@ -118,8 +118,6 @@ async function placeOrder(websiteUrl, loginUrl, username, password, itemDescript
     var pageTitle = await page.title()
     console.log('Page title after search:', pageTitle)
 
-    // Try to click first product
-    var productClicked = false
     // Wait for Revolve product grid to load
     try {
       await page.waitForFunction(() => {
@@ -137,77 +135,17 @@ async function placeOrder(websiteUrl, loginUrl, username, password, itemDescript
     })
     await page.waitForTimeout(3000)
 
-    // Log ALL links on page to find product URLs
-    var allLinks = await page.evaluate(() => {
-      var links = Array.from(document.querySelectorAll('a[href]'))
-      return links
-        .map(function(a) { return a.href })
-        .filter(function(href) { return href.includes('revolve.com') })
-        .slice(0, 30)
-    })
-    console.log('All links on page:', JSON.stringify(allLinks))
+    // Dump every <a> tag href so we can find correct selectors
+    var allLinks = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('a[href]'))
+        .map(a => ({ href: a.href, text: a.innerText.trim().slice(0, 40), className: a.className.slice(0, 60) }))
+        .filter(l => l.href.includes('revolve.com'))
+        .slice(0, 20)
+    )
+    console.log('PAGE LINKS:', JSON.stringify(allLinks, null, 2))
 
-    var productSelectors = [
-      '.js-plp-product-list a',
-      '.product-alias a',
-      '.plp-product__image-link',
-      '.plp-product a',
-      '[data-component="ProductGrid"] a',
-      '.u-grid a',
-      'article a',
-      '.product a',
-      'a[href*="/p/"]',
-      'a[href*="product"]',
-      '.grid a',
-      'main a',
-      '#search-results a',
-      '.results a',
-      'ul.products a',
-      'li.product a'
-    ]
-
-    for (var p = 0; p < productSelectors.length; p++) {
-      try {
-        await page.waitForSelector(productSelectors[p], { timeout: 3000 })
-        await page.click(productSelectors[p])
-        await page.waitForTimeout(2000)
-        console.log('Clicked product with:', productSelectors[p])
-        productClicked = true
-        break
-      } catch(e) {}
-    }
-
-    console.log('Product clicked:', productClicked)
-    console.log('URL after product click:', page.url())
-
-    // Force searchInput to truthy so we proceed
-    var searchInput = true
-
-    if (searchInput) {
-      // Already searched and clicked product above
-      await page.waitForTimeout(1000)
-
-      // Add to cart
-      try {
-        await page.click('button[data-testid="add-to-cart"], .add-to-cart, #add-to-cart, button:has-text("Add to Cart"), button:has-text("ADD TO CART")')
-        await page.waitForTimeout(2000)
-      } catch(e) {}
-
-      // Go to cart
-      try {
-        await page.goto('https://www.revolve.com/r/ShoppingBag.jsp')
-        await page.waitForTimeout(2000)
-      } catch(e) {}
-
-      result.status = 'success'
-      result.cartUrl = page.url()
-      result.cartSummary = 'Added ' + quantity + ' ' + itemDescription + ' to your Revolve cart.'
-    } else {
-      result.status = 'partial'
-      result.cartUrl = page.url()
-      result.cartSummary = 'Logged in successfully but could not find search. Please search manually.'
-    }
-
+    result.status = 'debug'
+    result.debugLinks = allLinks
     return result
   } finally {
     await browser.close()
@@ -291,6 +229,15 @@ module.exports = async function handler(req, res) {
     decryptedPassword = null
 
     console.log('Order result:', result.status)
+
+    // Debug mode — return link dump directly
+    if (result.status === 'debug') {
+      return res.status(200).json({
+        success: false,
+        stage: 'debug',
+        debugLinks: result.debugLinks || []
+      })
+    }
 
     var replyParts = []
     if (result.status === 'success') {
