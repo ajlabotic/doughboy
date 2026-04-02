@@ -135,7 +135,7 @@ async function placeOrder(websiteUrl, loginUrl, username, password, itemDescript
 
       // Go to cart
       try {
-        await page.goto(websiteUrl + '/r/ShoppingBag.jsp')
+        await page.goto('https://www.revolve.com/r/ShoppingBag.jsp')
         await page.waitForTimeout(2000)
       } catch(e) {}
 
