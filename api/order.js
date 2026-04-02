@@ -205,10 +205,10 @@ module.exports = async function handler(req, res) {
     })
   }
 
-  var websiteUrl = credResult.data.website_url
   console.log('Username length:', credResult.data.encrypted_username ? 'has value' : 'empty')
   console.log('Login URL from DB:', credResult.data.login_url)
-  var loginUrl = credResult.data.login_url || websiteUrl
+  var loginUrl = credResult.data.website_url
+  var websiteUrl = credResult.data.website_url
   var decryptedUsername = decrypt(credResult.data.encrypted_username)
   var decryptedPassword = decrypt(credResult.data.encrypted_password)
   console.log('Decrypted username length:', decryptedUsername ? decryptedUsername.length : 0)
