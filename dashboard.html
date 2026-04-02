@@ -1113,7 +1113,7 @@
 
       if (isOrderLike) {
         var supplierHint = extractSupplierHint(text);
-        statusEl = showOrderStatus('Opening ' + supplierHint + '...');
+        statusEl = showOrderStatus('Opening ' + supplierHint + '... this takes about 30 seconds.');
       } else {
         // Show thinking indicator for normal messages
         var thinkingMsg = document.createElement('div');
@@ -1142,14 +1142,23 @@
 
         var replyText = data.reply || 'Something went wrong. Try again.';
 
-        // If this was an order, show as order status style
+        // If this was an order, show reply + order status card
         if (data.isOrder) {
           var orderMsg = document.createElement('div');
-          orderMsg.className = 'chat-msg bot order-status';
-          orderMsg.style.animation = 'none';
-          orderMsg.style.opacity = '1';
+          orderMsg.className = 'chat-msg bot';
           orderMsg.textContent = replyText;
           chatMessages.appendChild(orderMsg);
+
+          var card = document.createElement('div');
+          card.style.cssText = 'background:rgba(124,36,57,0.06);border:1px solid rgba(124,36,57,0.2);border-radius:12px;padding:12px 16px;margin:8px 0 8px 0;font-family:DM Sans,sans-serif;font-size:0.85rem;color:var(--espresso);';
+          var cardHTML = '<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">' +
+            '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" style="flex-shrink:0;"><circle cx="8" cy="8" r="8" fill="var(--rumba)"/><path d="M4.5 8.5l2 2 5-5" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+            '<span style="font-weight:600;color:var(--rumba);">Cart ready</span></div>';
+          if (data.supplier) cardHTML += '<div style="margin-bottom:4px;"><span style="color:rgba(54,48,49,0.5);">Supplier:</span> ' + data.supplier + '</div>';
+          if (data.item) cardHTML += '<div style="margin-bottom:8px;"><span style="color:rgba(54,48,49,0.5);">Item:</span> ' + (data.quantity ? data.quantity + ' ' : '') + data.item + '</div>';
+          if (data.cartUrl) cardHTML += '<a href="' + data.cartUrl + '" target="_blank" rel="noopener" style="display:inline-block;background:var(--rumba);color:var(--vanilla);border-radius:100px;padding:0.4rem 1.2rem;font-family:DM Sans,sans-serif;font-size:0.8rem;font-weight:600;text-decoration:none;">View Cart</a>';
+          card.innerHTML = cardHTML;
+          chatMessages.appendChild(card);
         } else {
           var botMsg = document.createElement('div');
           botMsg.className = 'chat-msg bot';
