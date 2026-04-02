@@ -38,6 +38,38 @@ async function placeOrder(websiteUrl, loginUrl, username, password, itemDescript
       return result
     }
 
+    // Dismiss any popups or modals
+    try {
+      await page.keyboard.press('Escape')
+      await page.waitForTimeout(500)
+    } catch(e) {}
+
+    try {
+      var closeSelectors = [
+        '.modal .close',
+        '.modal-close',
+        '[data-dismiss="modal"]',
+        '.ntf__modal .close',
+        '#ntf_dialog_all .close',
+        '.ntf__modal button',
+        '[aria-label="Close"]',
+        '.close-button',
+        'button.close'
+      ]
+      for (var c = 0; c < closeSelectors.length; c++) {
+        try {
+          var closeBtn = await page.$(closeSelectors[c])
+          if (closeBtn) {
+            await closeBtn.click()
+            await page.waitForTimeout(500)
+            break
+          }
+        } catch(e) {}
+      }
+    } catch(e) {}
+
+    await page.waitForTimeout(1000)
+
     // Step 2: Log in
     console.log('Attempting login')
     try {
