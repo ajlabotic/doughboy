@@ -174,54 +174,35 @@ async function placeOrder(websiteUrl, loginUrl, username, password, itemDescript
       return result
     }
 
-    // Check for payment page
-    currentUrl = page.url()
-    if (currentUrl.includes('checkout') || currentUrl.includes('payment')) {
-      result.status = 'partial'
-      result.message = 'Stopped — detected payment page'
-      return result
-    }
+    // Wait for product page to fully render
+    await page.waitForTimeout(4000)
 
-    // Add to cart
-    try {
-      await page.waitForSelector('button:has-text("ADD TO BAG"), button:has-text("Add to Bag"), button:has-text("ADD TO CART"), .add-to-cart, #add-to-bag', { timeout: 10000 })
-      await page.click('button:has-text("ADD TO BAG"), button:has-text("Add to Bag"), button:has-text("ADD TO CART"), .add-to-cart, #add-to-bag')
-      await page.waitForTimeout(3000)
-      console.log('Clicked Add to Bag')
-    } catch(e) {
-      console.log('Add to bag failed:', e.message)
-      result.status = 'partial'
-      result.message = 'Found product but could not add to bag'
-      result.cartUrl = page.url()
-      return result
-    }
+    // Log ALL buttons on the page
+    var buttons = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('button, input[type="submit"]'))
+        .map(b => ({
+          text: b.innerText.trim().slice(0, 50),
+          className: b.className.slice(0, 80),
+          id: b.id,
+          disabled: b.disabled
+        }))
+    )
 
-    // Navigate to cart
-    try {
-      await page.goto('https://www.revolve.com/r/ShoppingBag.jsp', {
-        waitUntil: 'domcontentloaded',
-        timeout: 15000
-      })
-      await page.waitForTimeout(3000)
-      console.log('Cart URL:', page.url())
-    } catch(e) {
-      console.log('Cart navigation failed:', e.message)
-    }
+    var selectElements = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('select'))
+        .map(s => ({
+          name: s.name,
+          id: s.id,
+          className: s.className.slice(0, 60),
+          options: Array.from(s.options).map(o => o.text).slice(0, 5)
+        }))
+    )
 
-    // Check for payment page
-    currentUrl = page.url()
-    if (currentUrl.includes('checkout') || currentUrl.includes('payment')) {
-      result.status = 'partial'
-      result.message = 'Stopped — detected payment page'
-      return result
-    }
-
-    result.status = 'success'
-    result.cartUrl = page.url()
-    var cartTitle = await page.title()
-    var cartBody = await page.textContent('body')
-    result.cartSummary = (cartTitle || '') + '\n' + (cartBody ? cartBody.substring(0, 500) : '')
-    result.message = 'Cart ready'
+    result.status = 'product-page-debug'
+    result.productPageUrl = page.url()
+    result.productPageTitle = await page.title()
+    result.buttons = buttons
+    result.selectElements = selectElements
     return result
   } finally {
     await browser.close()
@@ -306,7 +287,7 @@ module.exports = async function handler(req, res) {
 
     console.log('Order result:', result.status)
 
-    // Debug mode — return link dump directly
+    // Debug mode — return debug data directly
     if (result.status === 'debug') {
       return res.status(200).json({
         success: false,
@@ -317,6 +298,17 @@ module.exports = async function handler(req, res) {
         searchTitle: result.searchTitle || null,
         pageHTML: result.pageHTML || null,
         debugLinks: result.debugLinks || []
+      })
+    }
+
+    if (result.status === 'product-page-debug') {
+      return res.json({
+        success: false,
+        stage: 'product-page-debug',
+        productPageUrl: result.productPageUrl || null,
+        productPageTitle: result.productPageTitle || null,
+        buttons: result.buttons || [],
+        selectElements: result.selectElements || []
       })
     }
 
