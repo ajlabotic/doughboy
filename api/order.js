@@ -160,35 +160,68 @@ async function placeOrder(websiteUrl, loginUrl, username, password, itemDescript
     console.log('After category nav - URL:', searchUrl)
     console.log('After category nav - Title:', searchTitle)
 
-    // Now grab all links and look for product patterns
-    var allLinks = await page.evaluate(() =>
-      Array.from(document.querySelectorAll('a[href]'))
-        .map(a => ({
-          href: a.href,
-          text: a.innerText.trim().slice(0, 40),
-          className: a.className.slice(0, 60)
-        }))
-        .filter(l =>
-          l.href.includes('revolve.com') &&
-          !l.href.includes('navsrc') &&
-          !l.href.includes('Homepage') &&
-          !l.href.includes('mobile') &&
-          !l.href.includes('mailto')
-        )
-        .slice(0, 30)
-    )
-    console.log('PAGE LINKS:', JSON.stringify(allLinks, null, 2))
+    // Click first product using confirmed selector
+    try {
+      await page.waitForSelector('a.js-plp-pdp-link2', { timeout: 10000 })
+      await page.click('a.js-plp-pdp-link2')
+      await page.waitForTimeout(3000)
+      console.log('Product page URL:', page.url())
+    } catch(e) {
+      console.log('Could not click product:', e.message)
+      result.status = 'partial'
+      result.message = 'Could not find product to click'
+      result.cartUrl = page.url()
+      return result
+    }
 
-    // Grab page HTML directly instead of screenshot (avoids bot detection timeout)
-    var pageHTML = await page.evaluate(() => document.body.innerHTML.slice(0, 2000))
+    // Check for payment page
+    currentUrl = page.url()
+    if (currentUrl.includes('checkout') || currentUrl.includes('payment')) {
+      result.status = 'partial'
+      result.message = 'Stopped — detected payment page'
+      return result
+    }
 
-    result.status = 'debug'
-    result.afterLoginUrl = afterLoginUrl
-    result.afterLoginTitle = afterLoginTitle
-    result.searchUrl = searchUrl
-    result.searchTitle = searchTitle
-    result.pageHTML = pageHTML
-    result.debugLinks = allLinks
+    // Add to cart
+    try {
+      await page.waitForSelector('button:has-text("ADD TO BAG"), button:has-text("Add to Bag"), button:has-text("ADD TO CART"), .add-to-cart, #add-to-bag', { timeout: 10000 })
+      await page.click('button:has-text("ADD TO BAG"), button:has-text("Add to Bag"), button:has-text("ADD TO CART"), .add-to-cart, #add-to-bag')
+      await page.waitForTimeout(3000)
+      console.log('Clicked Add to Bag')
+    } catch(e) {
+      console.log('Add to bag failed:', e.message)
+      result.status = 'partial'
+      result.message = 'Found product but could not add to bag'
+      result.cartUrl = page.url()
+      return result
+    }
+
+    // Navigate to cart
+    try {
+      await page.goto('https://www.revolve.com/r/ShoppingBag.jsp', {
+        waitUntil: 'domcontentloaded',
+        timeout: 15000
+      })
+      await page.waitForTimeout(3000)
+      console.log('Cart URL:', page.url())
+    } catch(e) {
+      console.log('Cart navigation failed:', e.message)
+    }
+
+    // Check for payment page
+    currentUrl = page.url()
+    if (currentUrl.includes('checkout') || currentUrl.includes('payment')) {
+      result.status = 'partial'
+      result.message = 'Stopped — detected payment page'
+      return result
+    }
+
+    result.status = 'success'
+    result.cartUrl = page.url()
+    var cartTitle = await page.title()
+    var cartBody = await page.textContent('body')
+    result.cartSummary = (cartTitle || '') + '\n' + (cartBody ? cartBody.substring(0, 500) : '')
+    result.message = 'Cart ready'
     return result
   } finally {
     await browser.close()
