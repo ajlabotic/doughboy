@@ -160,49 +160,65 @@ async function placeOrder(websiteUrl, loginUrl, username, password, itemDescript
     console.log('After category nav - URL:', searchUrl)
     console.log('After category nav - Title:', searchTitle)
 
-    // Click first product using confirmed selector
-    try {
-      await page.waitForSelector('a.js-plp-pdp-link2', { timeout: 10000 })
-      await page.click('a.js-plp-pdp-link2')
-      await page.waitForTimeout(3000)
-      console.log('Product page URL:', page.url())
-    } catch(e) {
-      console.log('Could not click product:', e.message)
+    // Get all product links from the category page
+    var productLinks = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('a.js-plp-pdp-link2'))
+        .map(a => a.href)
+        .filter(href => href.includes('revolve.com'))
+        .slice(0, 10)
+    )
+    console.log('Found ' + productLinks.length + ' product links')
+
+    if (productLinks.length === 0) {
       result.status = 'partial'
-      result.message = 'Could not find product to click'
+      result.message = 'Could not find any product links'
       result.cartUrl = page.url()
       return result
     }
 
-    // Wait for product page to fully render
-    await page.waitForTimeout(4000)
+    // Loop through products to find one with Add to Cart
+    var productPageUrl = null
+    var productPageTitle = null
+    var addToCartButton = null
 
-    // Log ALL buttons on the page
-    var buttons = await page.evaluate(() =>
-      Array.from(document.querySelectorAll('button, input[type="submit"]'))
-        .map(b => ({
-          text: b.innerText.trim().slice(0, 50),
-          className: b.className.slice(0, 80),
-          id: b.id,
-          disabled: b.disabled
-        }))
-    )
+    for (var i = 0; i < Math.min(productLinks.length, 5); i++) {
+      await page.goto(productLinks[i], {
+        waitUntil: 'domcontentloaded',
+        timeout: 20000
+      })
+      await page.waitForTimeout(3000)
 
-    var selectElements = await page.evaluate(() =>
-      Array.from(document.querySelectorAll('select'))
-        .map(s => ({
-          name: s.name,
-          id: s.id,
-          className: s.className.slice(0, 60),
-          options: Array.from(s.options).map(o => o.text).slice(0, 5)
-        }))
-    )
+      var buttons = await page.evaluate(() =>
+        Array.from(document.querySelectorAll('button'))
+          .map(b => ({
+            text: b.innerText.trim().slice(0, 50),
+            className: b.className.slice(0, 80),
+            id: b.id,
+            disabled: b.disabled
+          }))
+      )
 
-    result.status = 'product-page-debug'
-    result.productPageUrl = page.url()
-    result.productPageTitle = await page.title()
-    result.buttons = buttons
-    result.selectElements = selectElements
+      var cartBtn = buttons.find(function(b) {
+        return b.text.toLowerCase().includes('add to bag') ||
+          b.text.toLowerCase().includes('add to cart') ||
+          b.className.includes('js-add-to-bag') ||
+          b.className.includes('add-to-cart')
+      })
+
+      console.log('Product ' + i + ': ' + page.url() + ' — cart button: ' + (cartBtn ? cartBtn.text : 'NOT FOUND'))
+
+      if (cartBtn) {
+        productPageUrl = page.url()
+        productPageTitle = await page.title()
+        addToCartButton = cartBtn
+        break
+      }
+    }
+
+    result.status = 'found-in-stock-product'
+    result.productPageUrl = productPageUrl
+    result.productPageTitle = productPageTitle
+    result.addToCartButton = addToCartButton
     return result
   } finally {
     await browser.close()
@@ -301,12 +317,13 @@ module.exports = async function handler(req, res) {
       })
     }
 
-    if (result.status === 'product-page-debug') {
+    if (result.status === 'product-page-debug' || result.status === 'found-in-stock-product') {
       return res.json({
         success: false,
-        stage: 'product-page-debug',
+        stage: result.status,
         productPageUrl: result.productPageUrl || null,
         productPageTitle: result.productPageTitle || null,
+        addToCartButton: result.addToCartButton || null,
         buttons: result.buttons || [],
         selectElements: result.selectElements || []
       })
