@@ -38,37 +38,28 @@ async function placeOrder(websiteUrl, loginUrl, username, password, itemDescript
       return result
     }
 
-    // Dismiss any popups or modals
+    // Dismiss Revolve notification modal
     try {
-      await page.keyboard.press('Escape')
+      await page.waitForSelector('#ntf_dialog_all', { timeout: 3000 })
+      // Try clicking outside the modal to dismiss
+      await page.mouse.click(10, 10)
       await page.waitForTimeout(500)
     } catch(e) {}
 
+    // Force hide the modal via JavaScript
     try {
-      var closeSelectors = [
-        '.modal .close',
-        '.modal-close',
-        '[data-dismiss="modal"]',
-        '.ntf__modal .close',
-        '#ntf_dialog_all .close',
-        '.ntf__modal button',
-        '[aria-label="Close"]',
-        '.close-button',
-        'button.close'
-      ]
-      for (var c = 0; c < closeSelectors.length; c++) {
-        try {
-          var closeBtn = await page.$(closeSelectors[c])
-          if (closeBtn) {
-            await closeBtn.click()
-            await page.waitForTimeout(500)
-            break
-          }
-        } catch(e) {}
-      }
+      await page.evaluate(() => {
+        var modal = document.getElementById('ntf_dialog_all')
+        if (modal) {
+          modal.style.display = 'none'
+          modal.classList.remove('is-active')
+        }
+        // Also remove any overlay
+        var overlays = document.querySelectorAll('.modal-overlay, .modal-backdrop, .overlay')
+        overlays.forEach(function(el) { el.style.display = 'none' })
+      })
+      await page.waitForTimeout(500)
     } catch(e) {}
-
-    await page.waitForTimeout(1000)
 
     // Step 2: Log in
     console.log('Attempting login')
