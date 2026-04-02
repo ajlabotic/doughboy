@@ -120,11 +120,24 @@ async function placeOrder(websiteUrl, loginUrl, username, password, itemDescript
 
     // Try to click first product
     var productClicked = false
-    // Log page HTML to find correct selectors
-    var pageHTML = await page.evaluate(() => {
-      return document.body.innerHTML.substring(0, 3000)
+    // Wait longer for dynamic content to load
+    await page.waitForTimeout(5000)
+
+    // Scroll down to trigger lazy loading
+    await page.evaluate(() => {
+      window.scrollTo(0, 500)
     })
-    console.log('Page HTML sample:', pageHTML)
+    await page.waitForTimeout(2000)
+
+    // Log ALL links on page to find product URLs
+    var allLinks = await page.evaluate(() => {
+      var links = Array.from(document.querySelectorAll('a[href]'))
+      return links
+        .map(function(a) { return a.href })
+        .filter(function(href) { return href.includes('revolve.com') })
+        .slice(0, 30)
+    })
+    console.log('All links on page:', JSON.stringify(allLinks))
 
     var productSelectors = [
       '.js-plp-product-list a',
