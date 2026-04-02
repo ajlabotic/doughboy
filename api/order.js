@@ -5,7 +5,8 @@ async function placeOrder(websiteUrl, loginUrl, username, password, itemDescript
   var FirecrawlApp = require('@mendable/firecrawl-js')
   var { chromium } = require('playwright-core')
 
-  var firecrawl = new FirecrawlApp.default({ apiKey: process.env.FIRECRAWL_API_KEY })
+  var FC = FirecrawlApp.default || FirecrawlApp
+  var firecrawl = new FC({ apiKey: process.env.FIRECRAWL_API_KEY })
   var session = await firecrawl.browser({ ttl: 300 })
   console.log('Firecrawl session created:', session.id)
   var sessionId = session.id
