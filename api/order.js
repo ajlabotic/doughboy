@@ -141,28 +141,26 @@ async function placeOrder(websiteUrl, loginUrl, username, password, itemDescript
     // Step 3: Search for item
     console.log('Searching for:', quantity + ' ' + itemDescription)
 
-    // Navigate directly to Revolve search URL
-    var searchQuery = encodeURIComponent(itemDescription)
-    console.log('Navigating to search URL for:', itemDescription)
-    await page.goto('https://www.revolve.com/search?q=' + searchQuery)
-    await page.waitForTimeout(4000)
+    // Navigate to dresses category instead of search
+    console.log('Navigating to dresses category')
+    await page.goto('https://www.revolve.com/clothing-dresses/br/426fab/', {
+      waitUntil: 'domcontentloaded',
+      timeout: 20000
+    })
+
+    // Wait longer for JS to render products
+    await page.waitForTimeout(5000)
+
+    // Scroll down to trigger lazy loading
+    await page.evaluate(() => window.scrollBy(0, 600))
+    await page.waitForTimeout(2000)
+
     var searchUrl = page.url()
     var searchTitle = await page.title()
-    console.log('After search nav - URL:', searchUrl)
-    console.log('After search nav - Title:', searchTitle)
+    console.log('After category nav - URL:', searchUrl)
+    console.log('After category nav - Title:', searchTitle)
 
-    // Wait for product grid to render
-    try {
-      await page.waitForSelector(
-        '[data-js="product-grid"], .js-productsGrid, .product-grid, .search-result',
-        { timeout: 15000 }
-      )
-      console.log('Product grid found')
-    } catch(e) {
-      console.log('Product grid selector timed out:', e.message)
-    }
-
-    // Now grab links
+    // Now grab all links and look for product patterns
     var allLinks = await page.evaluate(() =>
       Array.from(document.querySelectorAll('a[href]'))
         .map(a => ({
@@ -174,9 +172,10 @@ async function placeOrder(websiteUrl, loginUrl, username, password, itemDescript
           l.href.includes('revolve.com') &&
           !l.href.includes('navsrc') &&
           !l.href.includes('Homepage') &&
-          !l.href.includes('mobile')
+          !l.href.includes('mobile') &&
+          !l.href.includes('mailto')
         )
-        .slice(0, 20)
+        .slice(0, 30)
     )
     console.log('PAGE LINKS:', JSON.stringify(allLinks, null, 2))
 
