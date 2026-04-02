@@ -198,11 +198,23 @@ async function placeOrder(websiteUrl, loginUrl, username, password, itemDescript
           }))
       )
 
+      if (i === 0) {
+        result.firstProductButtons = buttons
+        result.firstProductUrl = page.url()
+      }
+
       var cartBtn = buttons.find(function(b) {
-        return b.text.toLowerCase().includes('add to bag') ||
-          b.text.toLowerCase().includes('add to cart') ||
-          b.className.includes('js-add-to-bag') ||
-          b.className.includes('add-to-cart')
+        var t = b.text.toLowerCase()
+        var c = b.className.toLowerCase()
+        return t.includes('add') ||
+          t.includes('bag') ||
+          t.includes('cart') ||
+          t.includes('buy') ||
+          c.includes('add-to') ||
+          c.includes('atb') ||
+          c.includes('buy') ||
+          c.includes('js-atb') ||
+          c.includes('pdp-add')
       })
 
       console.log('Product ' + i + ': ' + page.url() + ' — cart button: ' + (cartBtn ? cartBtn.text : 'NOT FOUND'))
@@ -324,6 +336,8 @@ module.exports = async function handler(req, res) {
         productPageUrl: result.productPageUrl || null,
         productPageTitle: result.productPageTitle || null,
         addToCartButton: result.addToCartButton || null,
+        firstProductUrl: result.firstProductUrl || null,
+        firstProductButtons: result.firstProductButtons || [],
         buttons: result.buttons || [],
         selectElements: result.selectElements || []
       })
