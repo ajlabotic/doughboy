@@ -23,6 +23,34 @@ async function placeOrder(websiteUrl, loginUrl, username, password, itemDescript
   var context = browser.contexts()[0]
   var page = context.pages()[0]
 
+  // Set human-like headers and viewport
+  await page.setViewportSize({ width: 1280, height: 800 })
+
+  await page.setExtraHTTPHeaders({
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'sec-ch-ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': '"macOS"',
+    'Upgrade-Insecure-Requests': '1',
+    'Sec-Fetch-Site': 'none',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-User': '?1',
+    'Sec-Fetch-Dest': 'document',
+  })
+
+  // Override webdriver detection
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'webdriver', { get: () => false })
+    Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] })
+    Object.defineProperty(navigator, 'language', { get: () => 'en-US' })
+    window.chrome = { runtime: {} }
+  })
+
+  // Add a small random human-like delay before first navigation
+  await page.waitForTimeout(1500 + Math.random() * 1000)
+
   try {
     // Step 1: Navigate to login page
     var startUrl = loginUrl || websiteUrl
