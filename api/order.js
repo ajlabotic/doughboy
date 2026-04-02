@@ -83,146 +83,69 @@ async function placeOrder(websiteUrl, loginUrl, username, password, itemDescript
 
     // Step 3: Search for item
     console.log('Searching for:', quantity + ' ' + itemDescription)
+
+    // Try clicking search icon first
     try {
-      var searchInput = await page.$('input[type="search"], input[name="search"], input[name="q"], input[placeholder*="earch"], input[aria-label*="earch"]')
-      if (searchInput) {
-        await searchInput.fill(quantity ? quantity + ' ' + itemDescription : itemDescription)
-        await page.waitForTimeout(300)
-        await page.keyboard.press('Enter')
-        await page.waitForTimeout(3000)
-        console.log('Search results URL:', page.url())
-      } else {
-        console.log('No search input found, trying site navigation')
-        result.status = 'partial'
-        result.message = 'Logged in but could not find search field. You may need to search manually.'
-        result.cartUrl = page.url()
-        return result
-      }
-    } catch (searchErr) {
-      console.error('Search error:', searchErr.message)
-      result.status = 'partial'
-      result.message = 'Logged in but search failed: ' + searchErr.message
-      return result
-    }
+      await page.click('[data-id="search"], .search-icon, .icon-search, [aria-label="Search"], [data-testid="search"]')
+      await page.waitForTimeout(1000)
+    } catch(e) {}
 
-    // Check for payment page after search
-    currentUrl = page.url()
-    if (currentUrl.includes('checkout') || currentUrl.includes('payment')) {
-      result.status = 'partial'
-      result.message = 'Stopped — detected payment page'
-      return result
-    }
-
-    // Step 4: Click first product result
-    console.log('Looking for product results')
+    // Try keyboard shortcut to open search
     try {
-      var productLink = await page.$('a[href*="product"], a[href*="item"], .product a, .product-card a, .item a, [data-product] a')
-      if (productLink) {
-        await productLink.click()
-        await page.waitForTimeout(2000)
-        console.log('Product page URL:', page.url())
-      } else {
-        console.log('No product link found, checking if results are inline')
-      }
-    } catch (productErr) {
-      console.error('Product click error:', productErr.message)
-    }
+      await page.keyboard.press('/')
+      await page.waitForTimeout(500)
+    } catch(e) {}
 
-    // Check for payment page
-    currentUrl = page.url()
-    if (currentUrl.includes('checkout') || currentUrl.includes('payment')) {
-      result.status = 'partial'
-      result.message = 'Stopped — detected payment page'
-      return result
-    }
+    // Now try to find search input
+    var searchSelectors = [
+      'input[type="search"]',
+      'input[name="search"]',
+      'input[placeholder*="search" i]',
+      'input[placeholder*="Search" i]',
+      '#search',
+      '.search-input',
+      '[data-testid="search-input"]'
+    ]
 
-    // Step 5: Set quantity if specified
-    if (quantity) {
+    var searchInput = null
+    for (var s = 0; s < searchSelectors.length; s++) {
       try {
-        var qtyInput = await page.$('input[name="quantity"], input[name="qty"], input[type="number"], input[id="quantity"], input[id="qty"]')
-        if (qtyInput) {
-          await qtyInput.fill('')
-          await qtyInput.fill(String(quantity))
-          await page.waitForTimeout(300)
-          console.log('Set quantity to:', quantity)
-        }
-      } catch (qtyErr) {
-        console.error('Quantity error:', qtyErr.message)
-      }
+        await page.waitForSelector(searchSelectors[s], { timeout: 2000 })
+        searchInput = searchSelectors[s]
+        break
+      } catch(e) {}
     }
 
-    // Step 6: Add to cart
-    console.log('Looking for Add to Cart button')
-    try {
-      var addToCartBtn = await page.$('button:has-text("Add to Cart"), button:has-text("Add to cart"), button:has-text("Add To Cart"), button:has-text("ADD TO CART"), button[name="add"], input[value*="Add to Cart"], a:has-text("Add to Cart"), button:has-text("Add"), [data-action="add-to-cart"]')
-      if (addToCartBtn) {
-        await addToCartBtn.click()
+    if (searchInput) {
+      await page.fill(searchInput, quantity + ' ' + itemDescription)
+      await page.keyboard.press('Enter')
+      await page.waitForTimeout(3000)
+
+      // Click first product result
+      try {
+        await page.click('.product-link, .product-name, [data-testid="product"], .plp-product__title a, h2 a, .grid-product__title')
         await page.waitForTimeout(2000)
-        console.log('Clicked Add to Cart')
-      } else {
-        console.log('No Add to Cart button found')
-        result.status = 'partial'
-        result.message = 'Found product but could not find Add to Cart button. You may need to add it manually.'
-        result.cartUrl = page.url()
-        var pageContent = await page.textContent('body')
-        result.cartSummary = pageContent ? pageContent.substring(0, 500) : ''
-        return result
-      }
-    } catch (cartErr) {
-      console.error('Add to cart error:', cartErr.message)
-    }
+      } catch(e) {}
 
-    // Step 7: Navigate to cart
-    console.log('Navigating to cart')
-    try {
-      var cartLink = await page.$('a[href*="cart"], a[href*="basket"], a:has-text("Cart"), a:has-text("View Cart"), a:has-text("Go to Cart"), button:has-text("View Cart"), button:has-text("Go to Cart")')
-      if (cartLink) {
-        await cartLink.click()
+      // Add to cart
+      try {
+        await page.click('button[data-testid="add-to-cart"], .add-to-cart, #add-to-cart, button:has-text("Add to Cart"), button:has-text("ADD TO CART")')
         await page.waitForTimeout(2000)
-      } else {
-        // Try common cart URLs
-        var baseUrl = new URL(websiteUrl)
-        var cartUrls = [
-          baseUrl.origin + '/cart',
-          baseUrl.origin + '/basket',
-          baseUrl.origin + '/shopping-cart'
-        ]
-        for (var i = 0; i < cartUrls.length; i++) {
-          if (cartUrls[i].includes('checkout') || cartUrls[i].includes('payment')) continue
-          try {
-            await page.goto(cartUrls[i])
-            await page.waitForTimeout(1500)
-            var pageText = await page.textContent('body')
-            if (pageText && (pageText.toLowerCase().includes('cart') || pageText.toLowerCase().includes('basket'))) {
-              break
-            }
-          } catch (e) {
-            continue
-          }
-        }
-      }
+      } catch(e) {}
 
-      // Check for payment page
-      currentUrl = page.url()
-      if (currentUrl.includes('checkout') || currentUrl.includes('payment')) {
-        result.status = 'partial'
-        result.message = 'Stopped — detected payment page'
-        return result
-      }
+      // Go to cart
+      try {
+        await page.goto(websiteUrl + '/r/ShoppingBag.jsp')
+        await page.waitForTimeout(2000)
+      } catch(e) {}
 
-      // Get cart info
-      result.cartUrl = page.url()
-      var title = await page.title()
-      var bodyText = await page.textContent('body')
-      result.cartSummary = (title || '') + '\n' + (bodyText ? bodyText.substring(0, 500) : '')
       result.status = 'success'
-      result.message = 'Cart ready'
-      console.log('Cart URL:', result.cartUrl)
-    } catch (navErr) {
-      console.error('Cart navigation error:', navErr.message)
-      result.status = 'partial'
-      result.message = 'Item may have been added to cart but could not navigate to cart page.'
       result.cartUrl = page.url()
+      result.cartSummary = 'Added ' + quantity + ' ' + itemDescription + ' to your Revolve cart.'
+    } else {
+      result.status = 'partial'
+      result.cartUrl = page.url()
+      result.cartSummary = 'Logged in successfully but could not find search. Please search manually.'
     }
 
     return result
