@@ -107,48 +107,50 @@ async function placeOrder(websiteUrl, loginUrl, username, password, itemDescript
     // Step 3: Search for item
     console.log('Searching for:', quantity + ' ' + itemDescription)
 
-    // Try clicking search icon first
-    try {
-      await page.click('[data-id="search"], .search-icon, .icon-search, [aria-label="Search"], [data-testid="search"]')
-      await page.waitForTimeout(1000)
-    } catch(e) {}
+    // Navigate directly to Revolve search URL
+    var searchQuery = encodeURIComponent(itemDescription)
+    console.log('Navigating to search URL for:', itemDescription)
+    await page.goto('https://www.revolve.com/search?q=' + searchQuery)
+    await page.waitForTimeout(3000)
+    console.log('Search URL:', page.url())
 
-    // Try keyboard shortcut to open search
-    try {
-      await page.keyboard.press('/')
-      await page.waitForTimeout(500)
-    } catch(e) {}
+    // Add debug - log page title to confirm we're on search results
+    var pageTitle = await page.title()
+    console.log('Page title after search:', pageTitle)
 
-    // Now try to find search input
-    var searchSelectors = [
-      'input[type="search"]',
-      'input[name="search"]',
-      'input[placeholder*="search" i]',
-      'input[placeholder*="Search" i]',
-      '#search',
-      '.search-input',
-      '[data-testid="search-input"]'
+    // Try to click first product
+    var productClicked = false
+    var productSelectors = [
+      '.js-plp-product-list a',
+      '.product-alias a',
+      '.plp-product__image-link',
+      '.plp-product a',
+      '[data-component="ProductGrid"] a',
+      '.u-grid a',
+      'article a',
+      '.product a'
     ]
 
-    var searchInput = null
-    for (var s = 0; s < searchSelectors.length; s++) {
+    for (var p = 0; p < productSelectors.length; p++) {
       try {
-        await page.waitForSelector(searchSelectors[s], { timeout: 2000 })
-        searchInput = searchSelectors[s]
+        await page.waitForSelector(productSelectors[p], { timeout: 3000 })
+        await page.click(productSelectors[p])
+        await page.waitForTimeout(2000)
+        console.log('Clicked product with:', productSelectors[p])
+        productClicked = true
         break
       } catch(e) {}
     }
 
-    if (searchInput) {
-      await page.fill(searchInput, quantity + ' ' + itemDescription)
-      await page.keyboard.press('Enter')
-      await page.waitForTimeout(3000)
+    console.log('Product clicked:', productClicked)
+    console.log('URL after product click:', page.url())
 
-      // Click first product result
-      try {
-        await page.click('.product-link, .product-name, [data-testid="product"], .plp-product__title a, h2 a, .grid-product__title')
-        await page.waitForTimeout(2000)
-      } catch(e) {}
+    // Force searchInput to truthy so we proceed
+    var searchInput = true
+
+    if (searchInput) {
+      // Already searched and clicked product above
+      await page.waitForTimeout(1000)
 
       // Add to cart
       try {
