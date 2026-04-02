@@ -149,14 +149,15 @@ async function placeOrder(websiteUrl, loginUrl, username, password, itemDescript
     )
     console.log('PAGE LINKS:', JSON.stringify(allLinks, null, 2))
 
-    // Take screenshot so we can see exactly what the page looks like
-    var screenshot = await page.screenshot({ fullPage: false })
-    var screenshotB64 = screenshot.toString('base64')
+    // Grab page HTML directly instead of screenshot (avoids bot detection timeout)
+    var pageHTML = await page.evaluate(() => document.body.innerHTML.slice(0, 2000))
 
     result.status = 'debug'
     result.afterLoginUrl = afterLoginUrl
+    result.afterLoginTitle = afterLoginTitle
     result.searchUrl = searchUrl
-    result.screenshotB64 = screenshotB64
+    result.searchTitle = searchTitle
+    result.pageHTML = pageHTML
     result.debugLinks = allLinks
     return result
   } finally {
@@ -248,8 +249,10 @@ module.exports = async function handler(req, res) {
         success: false,
         stage: 'debug',
         afterLoginUrl: result.afterLoginUrl || null,
+        afterLoginTitle: result.afterLoginTitle || null,
         searchUrl: result.searchUrl || null,
-        screenshotB64: result.screenshotB64 || null,
+        searchTitle: result.searchTitle || null,
+        pageHTML: result.pageHTML || null,
         debugLinks: result.debugLinks || []
       })
     }
