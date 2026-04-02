@@ -120,6 +120,12 @@ async function placeOrder(websiteUrl, loginUrl, username, password, itemDescript
 
     // Try to click first product
     var productClicked = false
+    // Log page HTML to find correct selectors
+    var pageHTML = await page.evaluate(() => {
+      return document.body.innerHTML.substring(0, 3000)
+    })
+    console.log('Page HTML sample:', pageHTML)
+
     var productSelectors = [
       '.js-plp-product-list a',
       '.product-alias a',
@@ -128,7 +134,15 @@ async function placeOrder(websiteUrl, loginUrl, username, password, itemDescript
       '[data-component="ProductGrid"] a',
       '.u-grid a',
       'article a',
-      '.product a'
+      '.product a',
+      'a[href*="/p/"]',
+      'a[href*="product"]',
+      '.grid a',
+      'main a',
+      '#search-results a',
+      '.results a',
+      'ul.products a',
+      'li.product a'
     ]
 
     for (var p = 0; p < productSelectors.length; p++) {
