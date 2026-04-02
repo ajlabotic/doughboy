@@ -143,7 +143,7 @@ async function placeOrder(websiteUrl, loginUrl, username, password, itemDescript
 
     // Navigate to dresses category instead of search
     console.log('Navigating to dresses category')
-    await page.goto('https://www.revolve.com/clothing-dresses/br/426fab/', {
+    await page.goto('https://www.revolve.com/clothing/br/3699fc/', {
       waitUntil: 'domcontentloaded',
       timeout: 20000
     })
@@ -165,7 +165,7 @@ async function placeOrder(websiteUrl, loginUrl, username, password, itemDescript
       Array.from(document.querySelectorAll('a.js-plp-pdp-link2'))
         .map(a => a.href)
         .filter(href => href.includes('revolve.com'))
-        .slice(0, 10)
+        .slice(0, 20)
     )
     console.log('Found ' + productLinks.length + ' product links')
 
@@ -181,7 +181,7 @@ async function placeOrder(websiteUrl, loginUrl, username, password, itemDescript
     var productPageTitle = null
     var addToCartButton = null
 
-    for (var i = 0; i < Math.min(productLinks.length, 5); i++) {
+    for (var i = 0; i < Math.min(productLinks.length, 15); i++) {
       await page.goto(productLinks[i], {
         waitUntil: 'domcontentloaded',
         timeout: 20000
