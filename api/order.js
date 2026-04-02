@@ -120,14 +120,22 @@ async function placeOrder(websiteUrl, loginUrl, username, password, itemDescript
 
     // Try to click first product
     var productClicked = false
-    // Wait longer for dynamic content to load
-    await page.waitForTimeout(5000)
+    // Wait for Revolve product grid to load
+    try {
+      await page.waitForFunction(() => {
+        return document.querySelectorAll('a[href]').length > 20
+      }, { timeout: 15000 })
+    } catch(e) {
+      console.log('Timeout waiting for products')
+    }
 
-    // Scroll down to trigger lazy loading
-    await page.evaluate(() => {
-      window.scrollTo(0, 500)
-    })
     await page.waitForTimeout(2000)
+
+    // Scroll to trigger lazy load
+    await page.evaluate(() => {
+      window.scrollTo(0, 800)
+    })
+    await page.waitForTimeout(3000)
 
     // Log ALL links on page to find product URLs
     var allLinks = await page.evaluate(() => {
