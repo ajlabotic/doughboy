@@ -123,28 +123,31 @@ async function placeOrder(websiteUrl, loginUrl, username, password, itemDescript
     console.log('After search nav - URL:', searchUrl)
     console.log('After search nav - Title:', searchTitle)
 
-    // Wait for Revolve product grid to load
+    // Wait for product grid to render
     try {
-      await page.waitForFunction(() => {
-        return document.querySelectorAll('a[href]').length > 20
-      }, { timeout: 15000 })
+      await page.waitForSelector(
+        '[data-js="product-grid"], .js-productsGrid, .product-grid, .search-result',
+        { timeout: 15000 }
+      )
+      console.log('Product grid found')
     } catch(e) {
-      console.log('Timeout waiting for products')
+      console.log('Product grid selector timed out:', e.message)
     }
 
-    await page.waitForTimeout(2000)
-
-    // Scroll to trigger lazy load
-    await page.evaluate(() => {
-      window.scrollTo(0, 800)
-    })
-    await page.waitForTimeout(3000)
-
-    // Dump every <a> tag href so we can find correct selectors
+    // Now grab links
     var allLinks = await page.evaluate(() =>
       Array.from(document.querySelectorAll('a[href]'))
-        .map(a => ({ href: a.href, text: a.innerText.trim().slice(0, 40), className: a.className.slice(0, 60) }))
-        .filter(l => l.href.includes('revolve.com'))
+        .map(a => ({
+          href: a.href,
+          text: a.innerText.trim().slice(0, 40),
+          className: a.className.slice(0, 60)
+        }))
+        .filter(l =>
+          l.href.includes('revolve.com') &&
+          !l.href.includes('navsrc') &&
+          !l.href.includes('Homepage') &&
+          !l.href.includes('mobile')
+        )
         .slice(0, 20)
     )
     console.log('PAGE LINKS:', JSON.stringify(allLinks, null, 2))
