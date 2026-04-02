@@ -96,6 +96,12 @@ async function placeOrder(websiteUrl, loginUrl, username, password, itemDescript
       return result
     }
 
+    await page.waitForTimeout(3000)
+    var afterLoginUrl = page.url()
+    var afterLoginTitle = await page.title()
+    console.log('After login - URL:', afterLoginUrl)
+    console.log('After login - Title:', afterLoginTitle)
+
     // Check for payment page after login
     currentUrl = page.url()
     if (currentUrl.includes('checkout') || currentUrl.includes('payment')) {
@@ -111,12 +117,11 @@ async function placeOrder(websiteUrl, loginUrl, username, password, itemDescript
     var searchQuery = encodeURIComponent(itemDescription)
     console.log('Navigating to search URL for:', itemDescription)
     await page.goto('https://www.revolve.com/search?q=' + searchQuery)
-    await page.waitForTimeout(3000)
-    console.log('Search URL:', page.url())
-
-    // Add debug - log page title to confirm we're on search results
-    var pageTitle = await page.title()
-    console.log('Page title after search:', pageTitle)
+    await page.waitForTimeout(4000)
+    var searchUrl = page.url()
+    var searchTitle = await page.title()
+    console.log('After search nav - URL:', searchUrl)
+    console.log('After search nav - Title:', searchTitle)
 
     // Wait for Revolve product grid to load
     try {
@@ -144,7 +149,14 @@ async function placeOrder(websiteUrl, loginUrl, username, password, itemDescript
     )
     console.log('PAGE LINKS:', JSON.stringify(allLinks, null, 2))
 
+    // Take screenshot so we can see exactly what the page looks like
+    var screenshot = await page.screenshot({ fullPage: false })
+    var screenshotB64 = screenshot.toString('base64')
+
     result.status = 'debug'
+    result.afterLoginUrl = afterLoginUrl
+    result.searchUrl = searchUrl
+    result.screenshotB64 = screenshotB64
     result.debugLinks = allLinks
     return result
   } finally {
@@ -235,6 +247,9 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({
         success: false,
         stage: 'debug',
+        afterLoginUrl: result.afterLoginUrl || null,
+        searchUrl: result.searchUrl || null,
+        screenshotB64: result.screenshotB64 || null,
         debugLinks: result.debugLinks || []
       })
     }
